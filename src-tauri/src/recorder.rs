@@ -32,7 +32,6 @@ pub enum RecordKind {
     Screen,
 }
 
-const FRAMERATE: &str = "30";
 /// ffmpeg gets this long to finalise the MP4 after `q` before it is killed.
 const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 /// How long a fresh ffmpeg must survive before the recording counts as started.
@@ -140,11 +139,12 @@ fn start(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
         }
     }
     let video = if audio.is_empty() { out.clone() } else { work.join(format!("{stem}-video.mp4")) };
+    let framerate = prefs.framerate.to_string();
 
     let spawned = File::create(&log).map_err(|e| format!("{}: {e}", log.display())).and_then(|stderr| {
         helper_command(&ffmpeg)
             .args(["-hide_banner", "-loglevel", "warning", "-y"])
-            .args(input_args(area))
+            .args(input_args(area, &framerate))
             .args(encoder_args(&ffmpeg))
             .args(["-movflags", "+faststart"])
             .arg(&video)
@@ -216,15 +216,18 @@ pub fn stop(app: AppHandle) {
         match result {
             Ok(()) => {
                 let _ = app.emit("capture-added", &rec.out);
+                if settings::load(&app).show_gallery_after_capture {
+                    show_gallery(&app);
+                }
             }
             Err(msg) => {
                 eprintln!("{msg}");
                 let _ = app.emit("recording-error", &msg);
                 // A partially written MP4 without its index is unplayable.
                 let _ = std::fs::remove_file(&rec.video);
+                show_gallery(&app);
             }
         }
-        show_gallery(&app);
     });
 }
 
@@ -354,14 +357,14 @@ pub fn ffmpeg_exe() -> Result<PathBuf, String> {
         .ok_or_else(|| "ffmpeg not found: install it or place it next to Screencup".into())
 }
 
-fn input_args(a: Area) -> Vec<String> {
+fn input_args(a: Area, framerate: &str) -> Vec<String> {
     let size = format!("{}x{}", a.width, a.height);
     #[cfg(target_os = "windows")]
     let args = vec![
         "-f".into(),
         "gdigrab".into(),
         "-framerate".into(),
-        FRAMERATE.into(),
+        framerate.into(),
         "-draw_mouse".into(),
         "1".into(),
         "-offset_x".into(),
@@ -380,7 +383,7 @@ fn input_args(a: Area) -> Vec<String> {
             "-f".into(),
             "x11grab".into(),
             "-framerate".into(),
-            FRAMERATE.into(),
+            framerate.into(),
             "-draw_mouse".into(),
             "1".into(),
             "-video_size".into(),
@@ -398,7 +401,7 @@ fn input_args(a: Area) -> Vec<String> {
             "-f".into(),
             "avfoundation".into(),
             "-framerate".into(),
-            FRAMERATE.into(),
+            framerate.into(),
             "-capture_cursor".into(),
             "1".into(),
             "-i".into(),

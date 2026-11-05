@@ -5,6 +5,7 @@ mod audio;
 mod capture;
 mod clipboard;
 mod edits;
+mod hotkeys;
 mod library;
 mod recorder;
 mod settings;
@@ -14,18 +15,7 @@ use recorder::RecordKind;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, ShortcutState};
-
-/// Global hotkeys. PrintScreen may be taken by the OS (Windows 11 can route it to Snipping
-/// Tool) or another capture tool, so a combination is registered for regions as well.
-/// Ctrl+PrintScreen toggles a region recording, Ctrl+Shift+PrintScreen a screen recording.
-const SHORTCUTS: [&str; 5] = [
-    "PrintScreen",
-    "CommandOrControl+Shift+X",
-    "Shift+PrintScreen",
-    "Control+PrintScreen",
-    "Control+Shift+PrintScreen",
-];
+use tauri_plugin_global_shortcut::ShortcutState;
 
 /// Gap between the gallery and the screen corner, in logical pixels.
 const GALLERY_MARGIN: f64 = 8.0;
@@ -87,18 +77,8 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
-                    if event.state != ShortcutState::Pressed {
-                        return;
-                    }
-                    let app = app.clone();
-                    if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::PrintScreen) {
-                        recorder::toggle(app, RecordKind::Screen);
-                    } else if shortcut.matches(Modifiers::CONTROL, Code::PrintScreen) {
-                        recorder::toggle(app, RecordKind::Region);
-                    } else if shortcut.matches(Modifiers::SHIFT, Code::PrintScreen) {
-                        capture::capture(app, CaptureKind::Screen);
-                    } else {
-                        capture::capture(app, CaptureKind::Region);
+                    if event.state == ShortcutState::Pressed {
+                        hotkeys::trigger(app, shortcut);
                     }
                 })
                 .build(),
@@ -106,6 +86,13 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("thumb", library::thumbnail_protocol)
         .manage(clipboard::Clipboard::default())
         .manage(recorder::Recorder::default())
+        .manage(hotkeys::Bindings::default())
+        .plugin(tauri_plugin_dialog::init())
+        // Launched at login with --autostart; the app starts hidden in the tray either way.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
             open_editor,
@@ -114,6 +101,15 @@ pub fn run() {
             recorder::cancel_recording,
             settings::get_settings,
             settings::set_settings,
+            settings::default_library_dir,
+            settings::pick_library_dir,
+            settings::get_autostart,
+            settings::set_autostart,
+            settings::suspend_hotkeys,
+            settings::open_settings,
+            settings::open_library_dir,
+            library::open_capture,
+            library::reveal_capture,
             clipboard::copy_capture,
             library::list_captures,
             library::delete_capture,
@@ -127,11 +123,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            for shortcut in SHORTCUTS {
-                if let Err(e) = app.global_shortcut().register(shortcut) {
-                    eprintln!("cannot register {shortcut}: {e}");
-                }
-            }
+            hotkeys::apply(app.handle(), &settings::load(app.handle()).hotkeys);
 
             let menu = Menu::with_items(
                 app,
@@ -145,6 +137,7 @@ pub fn run() {
                     &MenuItem::with_id(app, "rec-stop", "Ferma la registrazione", true, None::<&str>)?,
                     &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(app, "gallery", "Apri la galleria", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "settings", "Impostazioni...", true, None::<&str>)?,
                     &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(app, "quit", "Esci da Screencup", true, None::<&str>)?,
                 ],
@@ -164,6 +157,11 @@ pub fn run() {
                     "rec-screen" => recorder::toggle(app.clone(), RecordKind::Screen),
                     "rec-stop" => recorder::stop(app.clone()),
                     "gallery" => show_gallery(app),
+                    "settings" => {
+                        if let Err(e) = settings::show(app) {
+                            eprintln!("settings window: {e}");
+                        }
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })

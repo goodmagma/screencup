@@ -30,8 +30,31 @@ pub fn is_video(path: &Path) -> bool {
     path.extension().is_some_and(|x| x.eq_ignore_ascii_case(VIDEO_EXT))
 }
 
-pub fn dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+/// `<Pictures>/Screencup`, used unless the settings name another folder.
+pub fn default_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     app.path().picture_dir().map(|d| d.join("Screencup")).map_err(|e| e.to_string())
+}
+
+pub fn dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    match crate::settings::load(app).library_dir {
+        Some(custom) => Ok(custom),
+        None => default_dir(app),
+    }
+}
+
+/// Opens a capture with the OS default app (videos in the system player).
+#[tauri::command]
+pub fn open_capture(app: AppHandle, name: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = resolve(&app, &name)?;
+    app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Shows a capture selected in the OS file manager.
+#[tauri::command]
+pub fn reveal_capture(app: AppHandle, name: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().reveal_item_in_dir(resolve(&app, &name)?).map_err(|e| e.to_string())
 }
 
 fn thumbs_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {

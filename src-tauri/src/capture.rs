@@ -11,7 +11,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager};
 use xcap::image::{RgbaImage, imageops};
 
-use crate::{clipboard, library, show_gallery};
+use crate::{clipboard, library, settings, show_gallery};
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -40,11 +40,16 @@ pub fn capture(app: AppHandle, kind: CaptureKind) {
         let gallery_was_visible = hide_gallery(&app);
         match run(&app, kind) {
             Ok(Some(path)) => {
-                if let Err(e) = clipboard_copy(&app, &path) {
+                let prefs = settings::load(&app);
+                if prefs.copy_after_capture
+                    && let Err(e) = clipboard_copy(&app, &path)
+                {
                     eprintln!("copy to clipboard failed: {e}");
                 }
                 let _ = app.emit("capture-added", &path);
-                show_gallery(&app);
+                if prefs.show_gallery_after_capture || gallery_was_visible {
+                    show_gallery(&app);
+                }
             }
             Ok(None) if gallery_was_visible => show_gallery(&app),
             Ok(None) => {}

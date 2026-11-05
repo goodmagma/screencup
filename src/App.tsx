@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { EditorWindow } from "./editor/Editor";
 import { Gallery } from "./Gallery";
 import { RecBar } from "./RecBar";
+import { SettingsWindow } from "./Settings";
 
 declare global {
   interface Window {
@@ -9,6 +10,8 @@ declare global {
     __SCREENCUP_EDIT__?: string;
     /** Set by `open_bar` in src-tauri/src/recorder.rs on the recording control bar. */
     __SCREENCUP_RECBAR__?: { startedMs: number; mic: boolean; system: boolean };
+    /** Set by `settings::show` in src-tauri/src/settings.rs on the settings window. */
+    __SCREENCUP_SETTINGS__?: boolean;
   }
 }
 
@@ -35,7 +38,13 @@ function MainWindow() {
 
   return (
     <div className="app">
-      {editName ? <EditorWindow name={editName} notify={notify} /> : <Gallery notify={notify} />}
+      {editName ? (
+        <EditorWindow name={editName} notify={notify} />
+      ) : window.__SCREENCUP_SETTINGS__ ? (
+        <SettingsWindow notify={notify} />
+      ) : (
+        <Gallery notify={notify} />
+      )}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

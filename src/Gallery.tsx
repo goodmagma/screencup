@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { Camera, CloudUpload, Maximize2, Minus, PencilRuler, Play, Video, X } from "lucide-react";
+import { Camera, CloudUpload, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
+import { patchSettings, type SettingsData } from "./Settings";
 import { BigButton, Menu, type MenuItem } from "./ui";
 
 /** Mirrors `Capture` in src-tauri/src/library.rs. */
@@ -17,12 +17,6 @@ interface Capture {
 /** Mirrors `CaptureKind` in src-tauri/src/capture.rs. */
 type CaptureKind = "region" | "screen" | "all";
 
-/** Mirrors `Settings` in src-tauri/src/settings.rs. */
-interface Settings {
-  record_microphone: boolean;
-  record_system_audio: boolean;
-}
-
 /** Mirrors `RecordKind` in src-tauri/src/recorder.rs. */
 type RecordKind = "region" | "screen";
 
@@ -33,17 +27,17 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [context, setContext] = useState<{ x: number; y: number; name: string } | null>(null);
-  const [settings, setSettings] = useState<Settings>({ record_microphone: false, record_system_audio: false });
+  const [settings, setSettings] = useState<SettingsData | null>(null);
 
   useEffect(() => {
-    invoke<Settings>("get_settings").then(setSettings).catch((e) => notify(String(e)));
+    invoke<SettingsData>("get_settings").then(setSettings).catch((e) => notify(String(e)));
+    const off = listen<SettingsData>("settings-changed", (e) => setSettings(e.payload));
+    return () => {
+      off.then((f) => f());
+    };
   }, [notify]);
 
-  const updateSettings = (patch: Partial<Settings>) => {
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    invoke("set_settings", { settings: next }).catch((e) => notify(String(e)));
-  };
+  const updateSettings = (patch: Partial<SettingsData>) => patchSettings(patch).catch((e) => notify(String(e)));
 
   const refresh = useCallback(
     () =>
@@ -74,14 +68,12 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
 
   const capture = (kind: CaptureKind) => invoke("capture", { kind });
   const record = (kind: RecordKind) => invoke("toggle_recording", { kind });
-  const pathOf = (name: string) => captures.find((c) => c.name === name)?.path;
   const isVideo = (name: string) => captures.find((c) => c.name === name)?.video ?? false;
+  const open = (name: string) => invoke("open_capture", { name }).catch((e) => notify(String(e)));
+  const reveal = (name: string) => invoke("reveal_capture", { name }).catch((e) => notify(String(e)));
   /** Images open in the editor; videos in the system player. */
-  const edit = (name: string) => {
-    const path = pathOf(name);
-    if (isVideo(name)) return path && openPath(path);
-    return invoke("open_editor", { name }).catch((e) => notify(String(e)));
-  };
+  const edit = (name: string) =>
+    isVideo(name) ? open(name) : invoke("open_editor", { name }).catch((e) => notify(String(e)));
 
   const copy = useCallback(
     (name: string) =>
@@ -116,13 +108,12 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
   });
 
   const itemActions = (name: string): MenuItem[] => {
-    const path = pathOf(name);
     const video = isVideo(name);
     return [
       { label: video ? "Riproduci" : "Modifica", onSelect: () => edit(name) },
       { label: "Copia negli appunti", onSelect: () => copy(name), disabled: video },
-      { label: "Apri con l'app predefinita", onSelect: () => path && openPath(path) },
-      { label: "Mostra nella cartella", onSelect: () => path && revealItemInDir(path) },
+      { label: "Apri con l'app predefinita", onSelect: () => open(name) },
+      { label: "Mostra nella cartella", onSelect: () => reveal(name) },
       { label: "Elimina", onSelect: () => remove(name), danger: true },
     ];
   };
@@ -133,6 +124,9 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
         <img src="/app-icon.svg" alt="" className="titlebar-icon" data-tauri-drag-region />
         <span data-tauri-drag-region>Screencup</span>
         <div className="titlebar-buttons">
+          <button onClick={() => invoke("open_settings")} title="Impostazioni">
+            <Settings size={15} />
+          </button>
           <button onClick={() => win.minimize()} title="Riduci a icona">
             <Minus size={16} />
           </button>
@@ -200,13 +194,13 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
             { label: "Registra lo schermo (Ctrl+Maiusc+Stamp)", onSelect: () => record("screen") },
             {
               label: "Microfono",
-              checked: settings.record_microphone,
-              onSelect: () => updateSettings({ record_microphone: !settings.record_microphone }),
+              checked: settings?.record_microphone ?? false,
+              onSelect: () => updateSettings({ record_microphone: !settings?.record_microphone }),
             },
             {
               label: "Audio di sistema",
-              checked: settings.record_system_audio,
-              onSelect: () => updateSettings({ record_system_audio: !settings.record_system_audio }),
+              checked: settings?.record_system_audio ?? false,
+              onSelect: () => updateSettings({ record_system_audio: !settings?.record_system_audio }),
             },
           ]}
         />
@@ -228,7 +222,7 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
             selected
               ? [
                   { label: "Copia negli appunti", onSelect: () => copy(selected) },
-                  { label: "Mostra nella cartella", onSelect: () => revealItemInDir(pathOf(selected)!) },
+                  { label: "Mostra nella cartella", onSelect: () => reveal(selected) },
                   { label: "Cloud (in arrivo)", onSelect: () => {}, disabled: true },
                 ]
               : undefined
