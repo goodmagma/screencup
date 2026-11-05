@@ -6,7 +6,8 @@
     "main",
     "edit-*",
     "recbar",
-    "settings"
+    "settings",
+    "clickfx"
   ],
   "permissions": [
     "core:default",

@@ -23,6 +23,8 @@ pub struct Settings {
     pub record_microphone: bool,
     /// Record what the computer plays (system output loopback) into screen recordings.
     pub record_system_audio: bool,
+    /// Draw a ripple where the mouse is clicked in screen recordings.
+    pub show_clicks: bool,
     pub framerate: u32,
     pub hotkeys: Hotkeys,
 }
@@ -46,6 +48,7 @@ impl Default for Settings {
             show_gallery_after_capture: true,
             record_microphone: false,
             record_system_audio: false,
+            show_clicks: true,
             framerate: 30,
             hotkeys: Hotkeys::default(),
         }

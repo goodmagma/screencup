@@ -10,6 +10,7 @@ export interface SettingsData {
   show_gallery_after_capture: boolean;
   record_microphone: boolean;
   record_system_audio: boolean;
+  show_clicks: boolean;
   framerate: number;
   hotkeys: Hotkeys;
 }
@@ -267,6 +268,12 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
           hint="Solo Windows per ora"
           checked={settings.record_system_audio}
           onChange={(v) => update({ record_system_audio: v })}
+        />
+        <Check
+          label="Evidenzia i clic del mouse"
+          hint="Un cerchio giallo (sinistro) o blu (destro) dove si clicca; solo Windows per ora"
+          checked={settings.show_clicks}
+          onChange={(v) => update({ show_clicks: v })}
         />
         <label className="setting-select">
           <span>Fotogrammi al secondo</span>

@@ -3,6 +3,7 @@
 
 mod audio;
 mod capture;
+mod clickfx;
 mod clipboard;
 mod edits;
 mod hotkeys;

@@ -23,6 +23,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWi
 
 use crate::audio::{self, AudioCapture, Source};
 use crate::capture::{self, Area, helper_command};
+use crate::clickfx::ClickFx;
 use crate::{library, settings, show_gallery};
 
 #[derive(Clone, Copy, Deserialize)]
@@ -49,6 +50,8 @@ struct Recording {
     video: PathBuf,
     log: PathBuf,
     audio: Vec<AudioCapture>,
+    /// Click highlights drawn over the area while recording, when enabled.
+    click_fx: Option<ClickFx>,
 }
 
 #[derive(Default)]
@@ -170,10 +173,23 @@ fn start(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
     }
     let mic = audio.iter().any(|c| matches!(c.source, Source::Microphone));
     let system = audio.iter().any(|c| matches!(c.source, Source::System));
-    *app.state::<Recorder>().0.lock().map_err(|e| e.to_string())? =
-        Some(Recording { child, out, video, log, audio });
+    *app.state::<Recorder>().0.lock().map_err(|e| e.to_string())? = Some(Recording {
+        child,
+        out,
+        video,
+        log,
+        audio,
+        click_fx: start_click_fx(app, area, prefs.show_clicks),
+    });
     open_bar(app, area, mic, system)?;
     Ok(())
+}
+
+fn start_click_fx(app: &AppHandle, area: Area, enabled: bool) -> Option<ClickFx> {
+    if !enabled {
+        return None;
+    }
+    ClickFx::start(app, area).map_err(|e| eprintln!("click highlights unavailable: {e}")).ok()
 }
 
 fn discard_audio(audio: Vec<AudioCapture>) {
@@ -188,6 +204,9 @@ fn discard_audio(audio: Vec<AudioCapture>) {
 pub fn stop(app: AppHandle) {
     let Some(mut rec) = app.state::<Recorder>().0.lock().ok().and_then(|mut r| r.take()) else { return };
     close_bar(&app);
+    if let Some(fx) = rec.click_fx.take() {
+        fx.finish(&app);
+    }
     std::thread::spawn(move || {
         // Video and audio stop at the same moment: the mux aligns the tracks on their ends.
         for c in &rec.audio {
@@ -312,6 +331,9 @@ fn media_seconds(ffmpeg: &Path, path: &Path) -> Result<f64, String> {
 pub fn cancel(app: AppHandle) {
     let Some(mut rec) = app.state::<Recorder>().0.lock().ok().and_then(|mut r| r.take()) else { return };
     close_bar(&app);
+    if let Some(fx) = rec.click_fx.take() {
+        fx.finish(&app);
+    }
     let _ = rec.child.kill();
     let _ = rec.child.wait();
     discard_audio(std::mem::take(&mut rec.audio));

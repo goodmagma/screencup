@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { EditorWindow } from "./editor/Editor";
 import { Gallery } from "./Gallery";
+import { ClickFx } from "./ClickFx";
 import { RecBar } from "./RecBar";
 import { SettingsWindow } from "./Settings";
 
@@ -12,6 +13,8 @@ declare global {
     __SCREENCUP_RECBAR__?: { startedMs: number; mic: boolean; system: boolean };
     /** Set by `settings::show` in src-tauri/src/settings.rs on the settings window. */
     __SCREENCUP_SETTINGS__?: boolean;
+    /** Set by `ClickFx::start` in src-tauri/src/clickfx.rs on the click highlight window. */
+    __SCREENCUP_CLICKFX__?: boolean;
   }
 }
 
@@ -21,6 +24,7 @@ const editName = window.__SCREENCUP_EDIT__ ?? null;
 export function App() {
   const recbar = window.__SCREENCUP_RECBAR__;
   if (recbar) return <RecBar {...recbar} />;
+  if (window.__SCREENCUP_CLICKFX__) return <ClickFx />;
   return <MainWindow />;
 }
 
