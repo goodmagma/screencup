@@ -168,6 +168,8 @@ pub fn show(app: &AppHandle) -> Result<(), String> {
     WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html".into()))
         .initialization_script("window.__SCREENCUP_SETTINGS__ = true;")
         .title("Impostazioni di Screencup")
+        .icon(crate::small_icon())
+        .map_err(|e| e.to_string())?
         .inner_size(640.0, 640.0)
         .min_inner_size(520.0, 420.0)
         .center()

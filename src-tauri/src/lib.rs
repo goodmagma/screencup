@@ -46,6 +46,13 @@ fn anchor_bottom_right(app: &AppHandle, w: &tauri::WebviewWindow) {
 
 /// Opens the editor for a capture in its own window, or focuses it when already open.
 /// Async on purpose: building a window from a synchronous command deadlocks on Windows.
+/// Simplified high-contrast icon (tray-icon.svg) for the tray and window title/taskbar
+/// icons. The default window icon is the largest layer of icon.ico, which turns muddy
+/// when Windows scales it down to taskbar size.
+pub fn small_icon() -> tauri::image::Image<'static> {
+    tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png")).expect("valid tray.png")
+}
+
 #[tauri::command]
 async fn open_editor(app: AppHandle, name: String) -> Result<(), String> {
     let label: String = format!("edit-{name}")
@@ -62,6 +69,8 @@ async fn open_editor(app: AppHandle, name: String) -> Result<(), String> {
     WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
         .initialization_script(&init)
         .title(format!("Screencup editor - {name}"))
+        .icon(small_icon())
+        .map_err(|e| e.to_string())?
         .inner_size(1280.0, 820.0)
         .min_inner_size(800.0, 500.0)
         .center()
@@ -122,6 +131,9 @@ pub fn run() {
             edits::save_edit_image,
         ])
         .setup(|app| {
+            if let Some(main) = app.get_webview_window("main") {
+                main.set_icon(small_icon())?;
+            }
             // Tray-only app on macOS: no Dock icon, no app menu bar.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -146,7 +158,7 @@ pub fn run() {
                 ],
             )?;
             TrayIconBuilder::with_id("main")
-                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
+                .icon(small_icon())
                 .tooltip("Screencup")
                 .menu(&menu)
                 // Left click opens the gallery; the menu stays on right click. Linux tray
