@@ -144,10 +144,13 @@ export function Editor({ name, onClose, notify }: Props) {
     let cancelled = false;
     (async () => {
       const [bytes, json] = await Promise.all([
-        invoke<ArrayBuffer>("read_edit_source", { name }),
+        invoke<ArrayBuffer | number[]>("read_edit_source", { name }),
         invoke<string | null>("load_annotations", { name }),
       ]);
-      url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+      // A raw response arrives as an ArrayBuffer over the ipc: protocol but as a plain number
+      // array when Tauri falls back to postMessage IPC.
+      const data = Array.isArray(bytes) ? new Uint8Array(bytes) : bytes;
+      url = URL.createObjectURL(new Blob([data], { type: "image/png" }));
       const image = new window.Image();
       image.src = url;
       await image.decode();
