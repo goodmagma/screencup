@@ -122,11 +122,8 @@ fn overlay_exe() -> Result<PathBuf, String> {
 /// Returns `false` when the user cancelled the selection.
 fn run_overlay(out: &Path) -> Result<bool, String> {
     let exe = overlay_exe()?;
-    let output = Command::new(&exe)
-        .arg("--out")
-        .arg(out)
-        .output()
-        .map_err(|e| format!("{}: {e}", exe.display()))?;
+    let output =
+        Command::new(&exe).arg("--out").arg(out).output().map_err(|e| format!("{}: {e}", exe.display()))?;
     match output.status.code() {
         Some(0) => Ok(true),
         Some(1) => Ok(false),

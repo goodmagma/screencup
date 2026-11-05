@@ -20,16 +20,18 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost thumb: http://thumb.localhost data:; style-src 'self' 'unsafe-inline'",
-      "assetProtocol": {
-        "enable": true,
-        "scope": ["$PICTURE/Screencup/**"]
-      }
+      "csp": "default-src 'self'; img-src 'self' blob: thumb: http://thumb.localhost data:; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

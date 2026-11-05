@@ -151,3 +151,115 @@ button.ghost.danger:hover {
   font-size: 13px;
   box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
 }
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button.danger {
+  background: #e5484d;
+}
+
+/* --- editor --------------------------------------------------------------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app > .grid,
+.app > .empty {
+  overflow: auto;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-bar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.editor-bar .group {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.editor-bar .spacer {
+  flex: 1;
+}
+
+button.tool {
+  padding: 4px 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+}
+
+button.tool:hover:not(:disabled) {
+  background: var(--border);
+}
+
+button.tool.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+button.swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+button.swatch.active {
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--accent);
+}
+
+.canvas-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: auto;
+  padding: 16px;
+  background: repeating-conic-gradient(var(--border) 0% 25%, var(--bg) 0% 50%) 0 0 / 20px 20px;
+}
+
+.stage {
+  position: relative;
+  margin: auto;
+  flex-shrink: 0;
+  box-shadow: 0 2px 16px rgb(0 0 0 / 25%);
+}
+
+.stage.drawing {
+  cursor: crosshair;
+}
+
+.text-edit {
+  position: absolute;
+  min-width: 120px;
+  margin: 0;
+  padding: 0;
+  border: 1px dashed var(--accent);
+  background: rgb(255 255 255 / 10%);
+  font-family: system-ui, "Segoe UI", sans-serif;
+  font-weight: bold;
+  line-height: 1.2;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+}

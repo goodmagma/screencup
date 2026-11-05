@@ -47,11 +47,7 @@ fn capture_all() -> Result<Vec<Shot>, String> {
         .map_err(err)?
         .iter()
         .map(|m| {
-            Ok(Shot {
-                img: m.capture_image().map_err(err)?,
-                x: m.x().map_err(err)?,
-                y: m.y().map_err(err)?,
-            })
+            Ok(Shot { img: m.capture_image().map_err(err)?, x: m.x().map_err(err)?, y: m.y().map_err(err)? })
         })
         .collect()
 }
@@ -184,10 +180,7 @@ impl Overlay {
             }
             let centre = mx + (MAG_SRC / 2) * MAG_ZOOM;
             let middle = my + (MAG_SRC / 2) * MAG_ZOOM;
-            cv.outline(
-                Rect { x0: centre, y0: middle, x1: centre + MAG_ZOOM, y1: middle + MAG_ZOOM },
-                ACCENT,
-            );
+            cv.outline(Rect { x0: centre, y0: middle, x1: centre + MAG_ZOOM, y1: middle + MAG_ZOOM }, ACCENT);
             cv.outline(Rect { x0: mx, y0: my, x1: mx + side, y1: my + side }, WHITE);
         }
 

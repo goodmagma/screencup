@@ -3,6 +3,7 @@
 
 mod capture;
 mod clipboard;
+mod edits;
 mod library;
 
 use capture::CaptureKind;
@@ -50,6 +51,10 @@ pub fn run() {
             clipboard::copy_capture,
             library::list_captures,
             library::delete_capture,
+            edits::read_edit_source,
+            edits::load_annotations,
+            edits::save_annotations,
+            edits::save_edit_image,
         ])
         .setup(|app| {
             // Tray-only app on macOS: no Dock icon, no app menu bar.

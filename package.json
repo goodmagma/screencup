@@ -12,8 +12,10 @@
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-opener": "^2.7.2",
+    "konva": "^10.9.1",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-konva": "^19.3.2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",

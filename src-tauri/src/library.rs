@@ -44,7 +44,7 @@ pub fn save_png(img: &RgbaImage, path: &Path) -> Result<(), String> {
 
 /// Maps a bare file name coming from the webview to a file in the library, rejecting
 /// anything that could point outside it.
-fn resolve<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<PathBuf, String> {
+pub fn resolve<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<PathBuf, String> {
     if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', ':']) {
         return Err(format!("invalid capture name: {name}"));
     }
@@ -62,6 +62,7 @@ pub fn list_captures(app: AppHandle) -> Result<Vec<Capture>, String> {
     };
     let mut captures: Vec<Capture> = entries
         .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
         .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("png")))
         .map(|e| {
             let modified_ms = modified(&e.path())
@@ -74,10 +75,17 @@ pub fn list_captures(app: AppHandle) -> Result<Vec<Capture>, String> {
     Ok(captures)
 }
 
-/// Moves a capture to the OS trash (recoverable) and drops its cached thumbnail.
+/// Moves a capture, with its original and annotations if it was edited, to the OS trash
+/// (recoverable) and drops its cached thumbnail.
 #[tauri::command]
 pub fn delete_capture(app: AppHandle, name: String) -> Result<(), String> {
-    trash::delete(resolve(&app, &name)?).map_err(|e| e.to_string())?;
+    let originals = crate::edits::originals_dir(&app)?;
+    let files: Vec<PathBuf> =
+        [resolve(&app, &name)?, originals.join(&name), originals.join(format!("{name}.json"))]
+            .into_iter()
+            .filter(|p| p.exists())
+            .collect();
+    trash::delete_all(files).map_err(|e| e.to_string())?;
     if let Ok(thumbs) = thumbs_dir(&app) {
         let _ = std::fs::remove_file(thumbs.join(&name));
     }
@@ -120,16 +128,12 @@ pub fn thumbnail_protocol<R: Runtime>(
     responder: UriSchemeResponder,
 ) {
     let app = ctx.app_handle().clone();
-    let name = percent_decode_str(request.uri().path().trim_start_matches('/'))
-        .decode_utf8_lossy()
-        .into_owned();
+    let name =
+        percent_decode_str(request.uri().path().trim_start_matches('/')).decode_utf8_lossy().into_owned();
     std::thread::spawn(move || {
         let response = match thumbnail(&app, &name) {
             Ok(bytes) => Response::builder().header(CONTENT_TYPE, "image/png").body(bytes),
-            Err(e) => Response::builder()
-                .status(404)
-                .header(CONTENT_TYPE, "text/plain")
-                .body(e.into_bytes()),
+            Err(e) => Response::builder().status(404).header(CONTENT_TYPE, "text/plain").body(e.into_bytes()),
         };
         responder.respond(response.expect("valid thumbnail response"));
     });
