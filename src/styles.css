@@ -597,22 +597,73 @@ button.size.active {
   gap: 8px;
 }
 
-/* --- recording control bar (window size: BAR_SIZE in src-tauri/src/recorder.rs) ----------- */
+/* --- recording panel (window size: BAR_SIZE in src-tauri/src/recorder.rs) --------------- */
 
 .recbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   height: 100vh;
-  padding: 0 6px 0 14px;
-  background: #1c1c1c;
-  border: 1px solid #444;
+  padding: 0 6px 0 10px;
+  background: #2b2b2b;
+  border: 1px solid #555;
   cursor: move;
+}
+
+.rec-main {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin-right: 6px;
+  padding: 0;
+  border: 3px solid #f76b15;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.rec-main:hover:not(:disabled) {
+  background: rgb(247 107 21 / 15%);
+}
+
+.rec-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #f76b15;
+}
+
+.rec-square {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  background: #f76b15;
+}
+
+.panel-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 68px;
+  padding: 6px 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.panel-toggle:hover:not(:disabled) {
+  background: #3a3a3a;
+}
+
+.panel-toggle.off {
+  color: #8a8a8a;
 }
 
 .rec-dot {
   width: 12px;
   height: 12px;
+  margin-left: 6px;
   border-radius: 50%;
   background: var(--danger);
   animation: rec-blink 1.2s ease-in-out infinite;
@@ -625,9 +676,9 @@ button.size.active {
 }
 
 .rec-time {
-  flex: 1;
+  margin: 0 8px;
   font-variant-numeric: tabular-nums;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .rec-source {
@@ -635,25 +686,40 @@ button.size.active {
   flex-shrink: 0;
 }
 
-.rec-stop {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  background: var(--danger);
-}
-
-.rec-cancel {
+.rec-close {
+  align-self: flex-start;
+  margin-top: 4px;
   display: grid;
   place-items: center;
-  padding: 5px;
+  padding: 4px;
   background: transparent;
   color: var(--muted);
 }
 
-.rec-cancel:hover {
-  background: #333;
+.rec-close:hover {
+  background: #444;
   color: #fff;
+}
+
+/* --- dashed frame around the area to record ----------------------------------------------- */
+
+.recframe {
+  position: fixed;
+  inset: 0;
+  border: 2px dashed rgb(255 255 255 / 90%);
+  outline: 1px solid rgb(0 0 0 / 45%);
+  outline-offset: -3px;
+}
+
+.recframe-size {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 60%);
+  color: #fff;
+  font-size: 11px;
 }
 
 /* --- settings window -------------------------------------------------------------------- */

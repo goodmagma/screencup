@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { EditorWindow } from "./editor/Editor";
 import { Gallery } from "./Gallery";
 import { ClickFx } from "./ClickFx";
-import { RecBar } from "./RecBar";
+import { RecBar, RecFrame } from "./RecBar";
 import { SettingsWindow } from "./Settings";
 
 declare global {
@@ -10,7 +10,9 @@ declare global {
     /** Set by `open_editor` in src-tauri/src/lib.rs on editor windows only. */
     __SCREENCUP_EDIT__?: string;
     /** Set by `open_bar` in src-tauri/src/recorder.rs on the recording control bar. */
-    __SCREENCUP_RECBAR__?: { startedMs: number; mic: boolean; system: boolean };
+    __SCREENCUP_RECBAR__?: boolean;
+    /** Set by `open_frame` in src-tauri/src/recorder.rs on the dashed area frame. */
+    __SCREENCUP_RECFRAME__?: { width: number; height: number };
     /** Set by `settings::show` in src-tauri/src/settings.rs on the settings window. */
     __SCREENCUP_SETTINGS__?: boolean;
     /** Set by `ClickFx::start` in src-tauri/src/clickfx.rs on the click highlight window. */
@@ -23,7 +25,8 @@ const editName = window.__SCREENCUP_EDIT__ ?? null;
 
 export function App() {
   const recbar = window.__SCREENCUP_RECBAR__;
-  if (recbar) return <RecBar {...recbar} />;
+  if (recbar) return <RecBar />;
+  if (window.__SCREENCUP_RECFRAME__) return <RecFrame {...window.__SCREENCUP_RECFRAME__} />;
   if (window.__SCREENCUP_CLICKFX__) return <ClickFx />;
   return <MainWindow />;
 }

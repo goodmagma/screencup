@@ -3,8 +3,10 @@
 //! ffmpeg grabs the area with the platform's screen input (gdigrab on Windows, x11grab on
 //! X11, avfoundation on macOS) and encodes H.264 into an MP4 in the library. Stopping writes
 //! `q` to its stdin so ffmpeg finalises the file; cancelling kills it and drops the file.
-//! While recording, a small control bar window (excluded from screen capture) shows the
-//! elapsed time with Stop / Cancel.
+//! Picking an area does not start recording: it first shows a dashed frame around the area
+//! and a control panel (record button, microphone / system audio / click toggles). Record on
+//! the panel, or the hotkey again, starts; the panel then shows the elapsed time with Stop /
+//! Cancel and the frame stays. Frame and panel are excluded from screen capture.
 //!
 //! With audio enabled in the settings, the video goes to a work file while the microphone
 //! and/or system audio are written to WAVs (see `audio`); on stop everything is muxed into
@@ -19,7 +21,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 use crate::audio::{self, AudioCapture, Source};
 use crate::capture::{self, Area, helper_command};
@@ -38,9 +40,13 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 /// How long a fresh ffmpeg must survive before the recording counts as started.
 const STARTUP_CHECK: Duration = Duration::from_millis(400);
 const BAR_LABEL: &str = "recbar";
-/// Control bar size in logical pixels; keep in sync with `.recbar` in src/styles.css.
-const BAR_SIZE: (f64, f64) = (280.0, 44.0);
-const BAR_GAP: f64 = 10.0;
+/// Control panel size in logical pixels; keep in sync with `.recbar` in src/styles.css.
+const BAR_SIZE: (f64, f64) = (480.0, 76.0);
+const BAR_GAP: f64 = 12.0;
+const FRAME_LABEL: &str = "recframe";
+/// Width of the ring around the area where the dashed frame is drawn, in logical pixels:
+/// the frame stays outside the recorded pixels.
+const FRAME_MARGIN: f64 = 4.0;
 
 struct Recording {
     child: Child,
@@ -55,13 +61,25 @@ struct Recording {
 }
 
 #[derive(Default)]
-pub struct Recorder(Mutex<Option<Recording>>);
+pub struct Recorder {
+    running: Mutex<Option<Recording>>,
+    /// Area picked and shown with frame and panel, waiting for Record.
+    prepared: Mutex<Option<Area>>,
+}
 
 /// Set from the hotkey until ffmpeg runs, so a second press during region selection is ignored.
 static STARTING: AtomicBool = AtomicBool::new(false);
 
 fn is_recording(app: &AppHandle) -> bool {
-    app.state::<Recorder>().0.lock().map(|r| r.is_some()).unwrap_or(false)
+    app.state::<Recorder>().running.lock().map(|r| r.is_some()).unwrap_or(false)
+}
+
+fn take_prepared(app: &AppHandle) -> Option<Area> {
+    app.state::<Recorder>().prepared.lock().ok().and_then(|mut p| p.take())
+}
+
+fn is_prepared(app: &AppHandle) -> bool {
+    app.state::<Recorder>().prepared.lock().map(|p| p.is_some()).unwrap_or(false)
 }
 
 // The commands are async: they open or destroy the control bar window, which deadlocks when
@@ -77,15 +95,35 @@ pub async fn stop_recording(app: AppHandle) {
     stop(app)
 }
 
+/// Record button of the panel.
+#[tauri::command]
+pub async fn start_prepared(app: AppHandle) {
+    begin_reporting(&app)
+}
+
+/// "Riseleziona" on the panel: drop the area and pick a new one.
+#[tauri::command]
+pub async fn reselect_region(app: AppHandle) {
+    if take_prepared(&app).is_none() {
+        return;
+    }
+    close_windows(&app);
+    toggle(app, RecordKind::Region);
+}
+
 #[tauri::command]
 pub async fn cancel_recording(app: AppHandle) {
     cancel(app)
 }
 
-/// Starts a recording, or stops the running one (so the same hotkey toggles).
+/// The hotkey cycles: pick an area (frame + panel) -> record -> stop.
 pub fn toggle(app: AppHandle, kind: RecordKind) {
     if is_recording(&app) {
         stop(app);
+        return;
+    }
+    if is_prepared(&app) {
+        std::thread::spawn(move || begin_reporting(&app));
         return;
     }
     if STARTING.swap(true, Ordering::SeqCst) {
@@ -93,17 +131,23 @@ pub fn toggle(app: AppHandle, kind: RecordKind) {
     }
     std::thread::spawn(move || {
         capture::hide_gallery(&app);
-        if let Err(e) = start(&app, kind) {
-            eprintln!("recording failed: {e}");
-            let _ = app.emit("recording-error", &e);
-            // The gallery shows the error.
-            show_gallery(&app);
+        if let Err(e) = prepare(&app, kind) {
+            report_error(&app, &e);
         }
         STARTING.store(false, Ordering::SeqCst);
     });
 }
 
-fn start(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
+fn report_error(app: &AppHandle, e: &str) {
+    eprintln!("recording failed: {e}");
+    close_windows(app);
+    let _ = app.emit("recording-error", e);
+    // The gallery shows the error.
+    show_gallery(app);
+}
+
+/// Picks the area and shows frame and panel; recording waits for Record.
+fn prepare(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
     let area = match kind {
         RecordKind::Region => match capture::select_region()? {
             Some(a) => a,
@@ -116,6 +160,21 @@ fn start(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
     if area.width < 16 || area.height < 16 {
         return Err("area too small to record".into());
     }
+    *app.state::<Recorder>().prepared.lock().map_err(|e| e.to_string())? = Some(area);
+    open_frame(app, area)?;
+    open_bar(app, area)?;
+    Ok(())
+}
+
+fn begin_reporting(app: &AppHandle) {
+    if let Err(e) = begin(app) {
+        report_error(app, &e);
+    }
+}
+
+/// Starts recording the prepared area.
+fn begin(app: &AppHandle) -> Result<(), String> {
+    let Some(area) = take_prepared(app) else { return Ok(()) };
 
     let ffmpeg = ffmpeg_exe()?;
     let out = library::new_capture_path(app)?.with_extension("mp4");
@@ -173,7 +232,7 @@ fn start(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
     }
     let mic = audio.iter().any(|c| matches!(c.source, Source::Microphone));
     let system = audio.iter().any(|c| matches!(c.source, Source::System));
-    *app.state::<Recorder>().0.lock().map_err(|e| e.to_string())? = Some(Recording {
+    *app.state::<Recorder>().running.lock().map_err(|e| e.to_string())? = Some(Recording {
         child,
         out,
         video,
@@ -181,8 +240,18 @@ fn start(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
         audio,
         click_fx: start_click_fx(app, area, prefs.show_clicks),
     });
-    open_bar(app, area, mic, system)?;
+    let started_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let _ = app.emit_to(BAR_LABEL, "recording-started", RecordingStarted { started_ms, mic, system });
     Ok(())
+}
+
+/// Tells the panel to switch to its recording look.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordingStarted {
+    started_ms: u64,
+    mic: bool,
+    system: bool,
 }
 
 fn start_click_fx(app: &AppHandle, area: Area, enabled: bool) -> Option<ClickFx> {
@@ -202,8 +271,10 @@ fn discard_audio(audio: Vec<AudioCapture>) {
 
 /// Finalises the running recording and adds it to the gallery.
 pub fn stop(app: AppHandle) {
-    let Some(mut rec) = app.state::<Recorder>().0.lock().ok().and_then(|mut r| r.take()) else { return };
-    close_bar(&app);
+    let Some(mut rec) = app.state::<Recorder>().running.lock().ok().and_then(|mut r| r.take()) else {
+        return;
+    };
+    close_windows(&app);
     if let Some(fx) = rec.click_fx.take() {
         fx.finish(&app);
     }
@@ -327,10 +398,16 @@ fn media_seconds(ffmpeg: &Path, path: &Path) -> Result<f64, String> {
         .map_err(|e| format!("{stamp}: {e}"))
 }
 
-/// Stops the running recording and throws the file away.
+/// Stops the running recording and throws the file away, or drops the prepared area.
 pub fn cancel(app: AppHandle) {
-    let Some(mut rec) = app.state::<Recorder>().0.lock().ok().and_then(|mut r| r.take()) else { return };
-    close_bar(&app);
+    if take_prepared(&app).is_some() {
+        close_windows(&app);
+        return;
+    }
+    let Some(mut rec) = app.state::<Recorder>().running.lock().ok().and_then(|mut r| r.take()) else {
+        return;
+    };
+    close_windows(&app);
     if let Some(fx) = rec.click_fx.take() {
         fx.finish(&app);
     }
@@ -479,9 +556,9 @@ pub fn video_frame(path: &Path, size: u32) -> Result<Vec<u8>, String> {
 
 // --- control bar -----------------------------------------------------------------------
 
-/// Places the bar under the recorded area, above it when there is no room, or inside its
+/// Places the panel under the recorded area, above it when there is no room, or inside its
 /// bottom edge for a full-screen recording. It is excluded from screen capture anyway.
-fn open_bar(app: &AppHandle, area: Area, mic: bool, system: bool) -> Result<(), String> {
+fn open_bar(app: &AppHandle, area: Area) -> Result<(), String> {
     let cx = area.x as f64 + area.width as f64 / 2.0;
     let cy = area.y as f64 + area.height as f64 / 2.0;
     let monitor = app.monitor_from_point(cx, cy).ok().flatten();
@@ -500,30 +577,59 @@ fn open_bar(app: &AppHandle, area: Area, mic: bool, system: bool) -> Result<(), 
     } else {
         area.y as f64 + area.height as f64 - h - gap * 4.0
     };
-    let started_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
-
     let bar = WebviewWindowBuilder::new(app, BAR_LABEL, WebviewUrl::App("index.html".into()))
-        .initialization_script(format!(
-            "window.__SCREENCUP_RECBAR__ = {{ startedMs: {started_ms}, mic: {mic}, system: {system} }};"
-        ))
+        .initialization_script("window.__SCREENCUP_RECBAR__ = true;")
         .title("Screencup recording")
         .inner_size(BAR_SIZE.0, BAR_SIZE.1)
         .decorations(false)
         .resizable(false)
         .always_on_top(true)
         .skip_taskbar(true)
-        .focused(false)
         .content_protected(true)
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
     let _ = bar.set_position(PhysicalPosition::new((cx - w / 2.0) as i32, y as i32));
     let _ = bar.show();
+    let _ = bar.set_focus();
     Ok(())
 }
 
-fn close_bar(app: &AppHandle) {
-    if let Some(bar) = app.get_webview_window(BAR_LABEL) {
-        let _ = bar.destroy();
+/// Dashed frame drawn in a thin ring just outside the area: click-through, and excluded
+/// from screen capture, so it never shows in the video.
+fn open_frame(app: &AppHandle, area: Area) -> Result<(), String> {
+    let scale =
+        app.monitor_from_point(area.x as f64, area.y as f64).ok().flatten().map_or(1.0, |m| m.scale_factor());
+    let m = (FRAME_MARGIN * scale).round() as i32;
+    let frame = WebviewWindowBuilder::new(app, FRAME_LABEL, WebviewUrl::App("index.html".into()))
+        .initialization_script(format!(
+            "window.__SCREENCUP_RECFRAME__ = {{ width: {}, height: {} }};",
+            area.width, area.height
+        ))
+        .title("Screencup area")
+        .transparent(true)
+        .decorations(false)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focusable(false)
+        .focused(false)
+        .content_protected(true)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let _ = frame.set_position(PhysicalPosition::new(area.x - m, area.y - m));
+    let _ = frame.set_size(PhysicalSize::new(area.width + 2 * m as u32, area.height + 2 * m as u32));
+    let _ = frame.set_ignore_cursor_events(true);
+    let _ = frame.show();
+    Ok(())
+}
+
+fn close_windows(app: &AppHandle) {
+    for label in [BAR_LABEL, FRAME_LABEL] {
+        if let Some(w) = app.get_webview_window(label) {
+            let _ = w.destroy();
+        }
     }
 }

@@ -100,6 +100,8 @@ pub fn run() {
             recorder::toggle_recording,
             recorder::stop_recording,
             recorder::cancel_recording,
+            recorder::start_prepared,
+            recorder::reselect_region,
             settings::get_settings,
             settings::set_settings,
             settings::default_library_dir,
