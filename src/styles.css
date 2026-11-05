@@ -57,15 +57,10 @@ button {
   cursor: pointer;
 }
 
-.empty,
-.error {
+.empty {
   padding: 32px 16px;
   text-align: center;
   color: var(--muted);
-}
-
-.error {
-  color: #e5484d;
 }
 
 .grid {
@@ -92,6 +87,11 @@ button {
   border-color: var(--accent);
 }
 
+.grid li.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 .grid img {
   width: 100%;
   aspect-ratio: 16 / 10;
@@ -100,7 +100,54 @@ button {
   border-radius: 4px;
 }
 
-.grid span {
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.meta span {
   font-size: 12px;
   color: var(--muted);
+}
+
+.actions {
+  display: none;
+  gap: 2px;
+}
+
+.grid li:hover .actions,
+.grid li.selected .actions {
+  display: flex;
+}
+
+button.ghost {
+  padding: 3px 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+
+button.ghost:hover {
+  background: var(--border);
+}
+
+button.ghost.danger:hover {
+  background: #e5484d;
+  color: #fff;
+}
+
+.toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
 }

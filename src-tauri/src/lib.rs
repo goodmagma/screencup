@@ -1,107 +1,25 @@
 //! Screencup desktop app: lives in the tray, opens the capture gallery on click and runs
-//! region captures through the native `screencup-overlay` binary.
+//! captures from the tray menu, global hotkeys or the gallery toolbar.
 
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::UNIX_EPOCH;
+mod capture;
+mod clipboard;
+mod library;
 
-use serde::Serialize;
+use capture::CaptureKind;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, WindowEvent};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri::{AppHandle, Manager, WindowEvent};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, ShortcutState};
 
-/// Hotkeys that start a region capture. PrintScreen may be taken by the OS (Windows 11
-/// routes it to Snipping Tool by default), so a combination is registered as well.
-const CAPTURE_SHORTCUTS: [&str; 2] = ["PrintScreen", "CommandOrControl+Shift+X"];
+/// Global hotkeys. PrintScreen may be taken by the OS (Windows 11 can route it to Snipping
+/// Tool) or another capture tool, so a combination is registered for regions as well.
+const SHORTCUTS: [&str; 3] = ["PrintScreen", "CommandOrControl+Shift+X", "Shift+PrintScreen"];
 
-/// Set while an overlay process is running, so repeated hotkeys do not stack overlays.
-static CAPTURING: AtomicBool = AtomicBool::new(false);
-
-#[derive(Serialize)]
-struct Capture {
-    path: PathBuf,
-    name: String,
-    modified_ms: u64,
-}
-
-/// Folder holding every capture: `<Pictures>/Screencup`.
-fn library_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path().picture_dir().map(|d| d.join("Screencup")).map_err(|e| e.to_string())
-}
-
-/// The overlay ships next to the app executable: in `target/<profile>` during development,
-/// and as a bundled sidecar in installed builds.
-fn overlay_exe() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let dir = exe.parent().ok_or("app executable has no parent directory")?;
-    Ok(dir.join(format!("screencup-overlay{}", std::env::consts::EXE_SUFFIX)))
-}
-
-fn show_gallery(app: &AppHandle) {
+pub(crate) fn show_gallery(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
-    }
-}
-
-#[tauri::command]
-fn list_captures(app: AppHandle) -> Result<Vec<Capture>, String> {
-    let dir = library_dir(&app)?;
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Ok(Vec::new());
-    };
-    let mut captures: Vec<Capture> = entries
-        .flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("png")))
-        .map(|e| {
-            let modified_ms = e
-                .metadata()
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map_or(0, |d| d.as_millis() as u64);
-            Capture { name: e.file_name().to_string_lossy().into_owned(), path: e.path(), modified_ms }
-        })
-        .collect();
-    captures.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
-    Ok(captures)
-}
-
-/// Runs the overlay on a background thread; on success the new file is announced to the
-/// gallery with a `capture-added` event and the gallery is brought to front.
-#[tauri::command]
-fn capture_region(app: AppHandle) {
-    if CAPTURING.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    std::thread::spawn(move || {
-        if let Err(e) = run_overlay(&app) {
-            eprintln!("capture failed: {e}");
-        }
-        CAPTURING.store(false, Ordering::SeqCst);
-    });
-}
-
-fn run_overlay(app: &AppHandle) -> Result<(), String> {
-    let name = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S%.3f.png").to_string();
-    let out = library_dir(app)?.join(name);
-    let exe = overlay_exe()?;
-    let output = Command::new(&exe)
-        .arg("--out")
-        .arg(&out)
-        .output()
-        .map_err(|e| format!("{}: {e}", exe.display()))?;
-    match output.status.code() {
-        Some(0) => {
-            app.emit("capture-added", &out).map_err(|e| e.to_string())?;
-            show_gallery(app);
-            Ok(())
-        }
-        Some(1) => Ok(()), // cancelled by the user
-        _ => Err(String::from_utf8_lossy(&output.stderr).into_owned()),
     }
 }
 
@@ -112,20 +30,33 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        capture_region(app.clone());
+                .with_handler(|app, shortcut, event| {
+                    if event.state != ShortcutState::Pressed {
+                        return;
                     }
+                    let kind = if shortcut.matches(Modifiers::SHIFT, Code::PrintScreen) {
+                        CaptureKind::Screen
+                    } else {
+                        CaptureKind::Region
+                    };
+                    capture::capture(app.clone(), kind);
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![list_captures, capture_region])
+        .register_asynchronous_uri_scheme_protocol("thumb", library::thumbnail_protocol)
+        .manage(clipboard::Clipboard::default())
+        .invoke_handler(tauri::generate_handler![
+            capture::capture,
+            clipboard::copy_capture,
+            library::list_captures,
+            library::delete_capture,
+        ])
         .setup(|app| {
             // Tray-only app on macOS: no Dock icon, no app menu bar.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            for shortcut in CAPTURE_SHORTCUTS {
+            for shortcut in SHORTCUTS {
                 if let Err(e) = app.global_shortcut().register(shortcut) {
                     eprintln!("cannot register {shortcut}: {e}");
                 }
@@ -134,7 +65,10 @@ pub fn run() {
             let menu = Menu::with_items(
                 app,
                 &[
-                    &MenuItem::with_id(app, "capture", "Capture region", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "region", "Capture region", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "screen", "Capture screen", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "all", "Capture all screens", true, None::<&str>)?,
+                    &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(app, "gallery", "Open gallery", true, None::<&str>)?,
                     &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(app, "quit", "Quit Screencup", true, None::<&str>)?,
@@ -148,7 +82,9 @@ pub fn run() {
                 // implementations report no clicks, so there the menu is the only entry point.
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "capture" => capture_region(app.clone()),
+                    "region" => capture::capture(app.clone(), CaptureKind::Region),
+                    "screen" => capture::capture(app.clone(), CaptureKind::Screen),
+                    "all" => capture::capture(app.clone(), CaptureKind::All),
                     "gallery" => show_gallery(app),
                     "quit" => app.exit(0),
                     _ => {}
