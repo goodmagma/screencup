@@ -5,8 +5,10 @@ mod capture;
 mod clipboard;
 mod edits;
 mod library;
+mod recorder;
 
 use capture::CaptureKind;
+use recorder::RecordKind;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -14,7 +16,14 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, ShortcutS
 
 /// Global hotkeys. PrintScreen may be taken by the OS (Windows 11 can route it to Snipping
 /// Tool) or another capture tool, so a combination is registered for regions as well.
-const SHORTCUTS: [&str; 3] = ["PrintScreen", "CommandOrControl+Shift+X", "Shift+PrintScreen"];
+/// Ctrl+PrintScreen toggles a region recording, Ctrl+Shift+PrintScreen a screen recording.
+const SHORTCUTS: [&str; 5] = [
+    "PrintScreen",
+    "CommandOrControl+Shift+X",
+    "Shift+PrintScreen",
+    "Control+PrintScreen",
+    "Control+Shift+PrintScreen",
+];
 
 /// Gap between the gallery and the screen corner, in logical pixels.
 const GALLERY_MARGIN: f64 = 8.0;
@@ -79,20 +88,28 @@ pub fn run() {
                     if event.state != ShortcutState::Pressed {
                         return;
                     }
-                    let kind = if shortcut.matches(Modifiers::SHIFT, Code::PrintScreen) {
-                        CaptureKind::Screen
+                    let app = app.clone();
+                    if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::PrintScreen) {
+                        recorder::toggle(app, RecordKind::Screen);
+                    } else if shortcut.matches(Modifiers::CONTROL, Code::PrintScreen) {
+                        recorder::toggle(app, RecordKind::Region);
+                    } else if shortcut.matches(Modifiers::SHIFT, Code::PrintScreen) {
+                        capture::capture(app, CaptureKind::Screen);
                     } else {
-                        CaptureKind::Region
-                    };
-                    capture::capture(app.clone(), kind);
+                        capture::capture(app, CaptureKind::Region);
+                    }
                 })
                 .build(),
         )
         .register_asynchronous_uri_scheme_protocol("thumb", library::thumbnail_protocol)
         .manage(clipboard::Clipboard::default())
+        .manage(recorder::Recorder::default())
         .invoke_handler(tauri::generate_handler![
             capture::capture,
             open_editor,
+            recorder::toggle_recording,
+            recorder::stop_recording,
+            recorder::cancel_recording,
             clipboard::copy_capture,
             library::list_captures,
             library::delete_capture,
@@ -115,13 +132,17 @@ pub fn run() {
             let menu = Menu::with_items(
                 app,
                 &[
-                    &MenuItem::with_id(app, "region", "Capture region", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "screen", "Capture screen", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "all", "Capture all screens", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "region", "Cattura una regione", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "screen", "Cattura lo schermo", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "all", "Cattura tutti gli schermi", true, None::<&str>)?,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "gallery", "Open gallery", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "rec-region", "Registra una regione", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "rec-screen", "Registra lo schermo", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "rec-stop", "Ferma la registrazione", true, None::<&str>)?,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "quit", "Quit Screencup", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "gallery", "Apri la galleria", true, None::<&str>)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "quit", "Esci da Screencup", true, None::<&str>)?,
                 ],
             )?;
             TrayIconBuilder::with_id("main")
@@ -135,6 +156,9 @@ pub fn run() {
                     "region" => capture::capture(app.clone(), CaptureKind::Region),
                     "screen" => capture::capture(app.clone(), CaptureKind::Screen),
                     "all" => capture::capture(app.clone(), CaptureKind::All),
+                    "rec-region" => recorder::toggle(app.clone(), RecordKind::Region),
+                    "rec-screen" => recorder::toggle(app.clone(), RecordKind::Screen),
+                    "rec-stop" => recorder::stop(app.clone()),
                     "gallery" => show_gallery(app),
                     "quit" => app.exit(0),
                     _ => {}

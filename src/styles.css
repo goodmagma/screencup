@@ -201,6 +201,25 @@ button.ghost:hover {
   justify-content: center;
 }
 
+.tile-image {
+  position: relative;
+}
+
+.play-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  transform: translate(-50%, 50%);
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  pointer-events: none;
+}
+
 .tile-image img {
   max-width: 100%;
   max-height: 100%;
@@ -208,11 +227,49 @@ button.ghost:hover {
   outline: 2px solid transparent;
 }
 
-.tile:hover .tile-image img {
+.tile:hover .tile-image {
+  position: relative;
+}
+
+.play-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  transform: translate(-50%, 50%);
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  pointer-events: none;
+}
+
+.tile-image img {
   outline-color: rgb(255 255 255 / 35%);
 }
 
-.tile.selected .tile-image img {
+.tile.selected .tile-image {
+  position: relative;
+}
+
+.play-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  transform: translate(-50%, 50%);
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  pointer-events: none;
+}
+
+.tile-image img {
   outline-color: var(--accent);
 }
 
@@ -533,4 +590,58 @@ button.size.active {
 .modal-buttons {
   display: flex;
   gap: 8px;
+}
+
+/* --- recording control bar (window size: BAR_SIZE in src-tauri/src/recorder.rs) ----------- */
+
+.recbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100vh;
+  padding: 0 6px 0 14px;
+  background: #1c1c1c;
+  border: 1px solid #444;
+  cursor: move;
+}
+
+.rec-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: rec-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes rec-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.rec-time {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+}
+
+.rec-stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--danger);
+}
+
+.rec-cancel {
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.rec-cancel:hover {
+  background: #333;
+  color: #fff;
 }

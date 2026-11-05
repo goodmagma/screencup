@@ -3,7 +3,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { Camera, CloudUpload, Maximize2, Minus, PencilRuler, Video, X } from "lucide-react";
+import { Camera, CloudUpload, Maximize2, Minus, PencilRuler, Play, Video, X } from "lucide-react";
 import { BigButton, Menu, type MenuItem } from "./ui";
 
 /** Mirrors `Capture` in src-tauri/src/library.rs. */
@@ -11,10 +11,14 @@ interface Capture {
   path: string;
   name: string;
   modified_ms: number;
+  video: boolean;
 }
 
 /** Mirrors `CaptureKind` in src-tauri/src/capture.rs. */
 type CaptureKind = "region" | "screen" | "all";
+
+/** Mirrors `RecordKind` in src-tauri/src/recorder.rs. */
+type RecordKind = "region" | "screen";
 
 const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 const win = getCurrentWindow();
@@ -36,19 +40,29 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
     refresh();
     const added = listen<string>("capture-added", (event) => {
       refresh();
-      setSelected(baseName(event.payload));
-      notify("Catturata e copiata negli appunti");
+      const name = baseName(event.payload);
+      setSelected(name);
+      notify(name.endsWith(".mp4") ? "Registrazione salvata" : "Catturata e copiata negli appunti");
     });
     const updated = listen("capture-updated", refresh);
+    const failed = listen<string>("recording-error", (event) => notify(`Registrazione non riuscita: ${event.payload}`));
     return () => {
       added.then((off) => off());
       updated.then((off) => off());
+      failed.then((off) => off());
     };
   }, [refresh, notify]);
 
   const capture = (kind: CaptureKind) => invoke("capture", { kind });
-  const edit = (name: string) => invoke("open_editor", { name }).catch((e) => notify(String(e)));
+  const record = (kind: RecordKind) => invoke("toggle_recording", { kind });
   const pathOf = (name: string) => captures.find((c) => c.name === name)?.path;
+  const isVideo = (name: string) => captures.find((c) => c.name === name)?.video ?? false;
+  /** Images open in the editor; videos in the system player. */
+  const edit = (name: string) => {
+    const path = pathOf(name);
+    if (isVideo(name)) return path && openPath(path);
+    return invoke("open_editor", { name }).catch((e) => notify(String(e)));
+  };
 
   const copy = useCallback(
     (name: string) =>
@@ -84,16 +98,15 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
 
   const itemActions = (name: string): MenuItem[] => {
     const path = pathOf(name);
+    const video = isVideo(name);
     return [
-      { label: "Modifica", onSelect: () => edit(name) },
-      { label: "Copia negli appunti", onSelect: () => copy(name) },
+      { label: video ? "Riproduci" : "Modifica", onSelect: () => edit(name) },
+      { label: "Copia negli appunti", onSelect: () => copy(name), disabled: video },
       { label: "Apri con l'app predefinita", onSelect: () => path && openPath(path) },
       { label: "Mostra nella cartella", onSelect: () => path && revealItemInDir(path) },
       { label: "Elimina", onSelect: () => remove(name), danger: true },
     ];
   };
-
-  const soon = (what: string) => () => notify(`${what}: in arrivo`);
 
   return (
     <div className="gallery">
@@ -134,6 +147,11 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
             >
               <div className="tile-image">
                 <img src={`${convertFileSrc(c.name, "thumb")}?v=${c.modified_ms}`} alt="" loading="lazy" />
+                {c.video && (
+                  <span className="play-badge">
+                    <Play size={18} fill="currentColor" />
+                  </span>
+                )}
               </div>
               <figcaption>{c.name}</figcaption>
             </figure>
@@ -157,15 +175,15 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
           icon={<Video size={28} />}
           label="Registra video"
           ring="#e5484d"
-          onClick={soon("Registrazione video")}
+          onClick={() => record("region")}
           menu={[
-            { label: "Registra una regione", onSelect: soon("Registrazione video") },
-            { label: "Registra lo schermo", onSelect: soon("Registrazione video") },
+            { label: "Registra una regione (Ctrl+Stamp)", onSelect: () => record("region") },
+            { label: "Registra lo schermo (Ctrl+Maiusc+Stamp)", onSelect: () => record("screen") },
           ]}
         />
         <BigButton
           icon={<PencilRuler size={26} />}
-          label="Modifica..."
+          label={selected && isVideo(selected) ? "Riproduci" : "Modifica..."}
           ring="#30a46c"
           disabled={!selected}
           onClick={() => selected && edit(selected)}

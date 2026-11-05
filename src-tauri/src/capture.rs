@@ -71,7 +71,7 @@ fn run(app: &AppHandle, kind: CaptureKind) -> Result<Option<PathBuf>, String> {
     Ok(Some(out))
 }
 
-fn hide_gallery(app: &AppHandle) -> bool {
+pub(crate) fn hide_gallery(app: &AppHandle) -> bool {
     let Some(w) = app.get_webview_window("main") else { return false };
     if !w.is_visible().unwrap_or(false) || w.is_minimized().unwrap_or(false) {
         return false;
@@ -119,14 +119,63 @@ fn overlay_exe() -> Result<PathBuf, String> {
     Ok(dir.join(format!("screencup-overlay{}", std::env::consts::EXE_SUFFIX)))
 }
 
-/// Returns `false` when the user cancelled the selection.
-fn run_overlay(out: &Path) -> Result<bool, String> {
+/// A command for a helper process that never flashes a console window on Windows.
+pub(crate) fn helper_command(program: &Path) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+/// Runs the overlay with `args`; returns its JSON stdout, or `None` when the user cancelled.
+fn overlay(args: &[&std::ffi::OsStr]) -> Result<Option<String>, String> {
     let exe = overlay_exe()?;
-    let output =
-        Command::new(&exe).arg("--out").arg(out).output().map_err(|e| format!("{}: {e}", exe.display()))?;
+    let output = helper_command(&exe).args(args).output().map_err(|e| format!("{}: {e}", exe.display()))?;
     match output.status.code() {
-        Some(0) => Ok(true),
-        Some(1) => Ok(false),
+        Some(0) => Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned())),
+        Some(1) => Ok(None),
         _ => Err(String::from_utf8_lossy(&output.stderr).into_owned()),
     }
+}
+
+/// Returns `false` when the user cancelled the selection.
+fn run_overlay(out: &Path) -> Result<bool, String> {
+    Ok(overlay(&["--out".as_ref(), out.as_os_str()])?.is_some())
+}
+
+/// Area in physical virtual-desktop pixels.
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct Area {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Lets the user pick an area on the frozen screen without saving anything.
+pub(crate) fn select_region() -> Result<Option<Area>, String> {
+    #[derive(Deserialize)]
+    struct Selection {
+        rect: Area,
+    }
+    let Some(json) = overlay(&["--select".as_ref()])? else { return Ok(None) };
+    serde_json::from_str::<Selection>(&json).map(|s| Some(s.rect)).map_err(|e| format!("{e}: {json}"))
+}
+
+/// The whole monitor under the mouse cursor.
+pub(crate) fn screen_under_cursor(app: &AppHandle) -> Result<Area, String> {
+    let p = app.cursor_position().map_err(|e| e.to_string())?;
+    let m = xcap::Monitor::from_point(p.x as i32, p.y as i32).map_err(|e| e.to_string())?;
+    let err = |e: xcap::XCapError| e.to_string();
+    Ok(Area {
+        x: m.x().map_err(err)?,
+        y: m.y().map_err(err)?,
+        width: m.width().map_err(err)?,
+        height: m.height().map_err(err)?,
+    })
 }

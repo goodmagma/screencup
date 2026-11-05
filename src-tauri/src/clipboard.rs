@@ -30,5 +30,8 @@ pub fn copy_image<R: Runtime>(app: &AppHandle<R>, img: &RgbaImage) -> Result<(),
 
 #[tauri::command]
 pub fn copy_capture(app: AppHandle, name: String) -> Result<(), String> {
+    if library::is_video(std::path::Path::new(&name)) {
+        return Err("I video non si possono ancora copiare negli appunti".into());
+    }
     copy_image(&app, &library::load(&app, &name)?)
 }

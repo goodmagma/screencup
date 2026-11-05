@@ -19,6 +19,15 @@ pub struct Capture {
     path: PathBuf,
     name: String,
     modified_ms: u64,
+    video: bool,
+}
+
+/// File extensions the library lists: screenshots and screen recordings.
+const IMAGE_EXT: &str = "png";
+const VIDEO_EXT: &str = "mp4";
+
+pub fn is_video(path: &Path) -> bool {
+    path.extension().is_some_and(|x| x.eq_ignore_ascii_case(VIDEO_EXT))
 }
 
 pub fn dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -63,12 +72,21 @@ pub fn list_captures(app: AppHandle) -> Result<Vec<Capture>, String> {
     let mut captures: Vec<Capture> = entries
         .flatten()
         .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("png")))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case(IMAGE_EXT) || x.eq_ignore_ascii_case(VIDEO_EXT))
+        })
         .map(|e| {
             let modified_ms = modified(&e.path())
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map_or(0, |d| d.as_millis() as u64);
-            Capture { name: e.file_name().to_string_lossy().into_owned(), path: e.path(), modified_ms }
+            Capture {
+                name: e.file_name().to_string_lossy().into_owned(),
+                path: e.path(),
+                modified_ms,
+                video: is_video(&e.path()),
+            }
         })
         .collect();
     captures.sort_by_key(|c| std::cmp::Reverse(c.modified_ms));
@@ -107,11 +125,16 @@ fn thumbnail<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<Vec<u8>, Stri
     {
         return Ok(bytes);
     }
-    let img = xcap::image::open(&src).map_err(|e| format!("{}: {e}", src.display()))?;
-    let mut bytes = Vec::new();
-    img.thumbnail(THUMB_SIZE, THUMB_SIZE)
-        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
-        .map_err(|e| e.to_string())?;
+    let bytes = if is_video(&src) {
+        crate::recorder::video_frame(&src, THUMB_SIZE)?
+    } else {
+        let img = xcap::image::open(&src).map_err(|e| format!("{}: {e}", src.display()))?;
+        let mut bytes = Vec::new();
+        img.thumbnail(THUMB_SIZE, THUMB_SIZE)
+            .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
+        bytes
+    };
     // The cache is best effort: a failed write only means regenerating next time.
     if let Some(parent) = thumb.parent() {
         let _ = std::fs::create_dir_all(parent);

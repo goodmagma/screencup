@@ -7,6 +7,8 @@
 //!
 //! Usage:
 //!   screencup-overlay [--out FILE.png]   select a region, save it, print a JSON result on stdout
+//!   screencup-overlay --select           select a region, print it as JSON without saving pixels
+//!                                        (used to pick the area of a video recording)
 //!   screencup-overlay --dump DIR         capture only (no UI), save one PNG per monitor
 //!
 //! Exit codes: 0 = saved, 1 = cancelled, 2 = error.
@@ -196,7 +198,8 @@ struct Drag {
 
 struct App {
     shots: Vec<Shot>,
-    out: PathBuf,
+    /// Where to save the crop; `None` in `--select` mode.
+    out: Option<PathBuf>,
     overlays: Vec<Overlay>,
     drag: Option<Drag>,
     /// `None` when the user cancelled.
@@ -219,21 +222,23 @@ impl App {
         let sx = |x: i32| (x as u64 * iw as u64 / w as u64) as u32;
         let sy = |y: i32| (y as u64 * ih as u64 / h as u64) as u32;
         let (ix0, iy0, ix1, iy1) = (sx(r.x0), sy(r.y0), sx(r.x1), sy(r.y1));
-        let crop = imageops::crop_imm(&shot.img, ix0, iy0, ix1 - ix0, iy1 - iy0).to_image();
-        self.result = Some(save(&crop, &self.out).map(|()| {
-            serde_json::json!({
-                "path": self.out,
-                "monitor": self.overlays[idx].shot,
-                "rect": {
-                    "x": shot.x + ix0 as i32,
-                    "y": shot.y + iy0 as i32,
-                    "width": ix1 - ix0,
-                    "height": iy1 - iy0,
-                },
-                "elapsed_ms": self.t0.elapsed().as_millis() as u64,
-            })
-            .to_string()
-        }));
+        let result = serde_json::json!({
+            "path": self.out,
+            "monitor": self.overlays[idx].shot,
+            "rect": {
+                "x": shot.x + ix0 as i32,
+                "y": shot.y + iy0 as i32,
+                "width": ix1 - ix0,
+                "height": iy1 - iy0,
+            },
+            "elapsed_ms": self.t0.elapsed().as_millis() as u64,
+        })
+        .to_string();
+        let saved = match &self.out {
+            Some(out) => save(&imageops::crop_imm(&shot.img, ix0, iy0, ix1 - ix0, iy1 - iy0).to_image(), out),
+            None => Ok(()),
+        };
+        self.result = Some(saved.map(|()| result));
         event_loop.exit();
     }
 }
@@ -376,11 +381,13 @@ fn main() -> ExitCode {
     let t0 = Instant::now();
     let mut out = None;
     let mut dump = None;
+    let mut select = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--out" => out = args.next().map(PathBuf::from),
             "--dump" => dump = args.next().map(PathBuf::from),
+            "--select" => select = true,
             other => {
                 eprintln!("unknown argument: {other}");
                 return ExitCode::from(2);
@@ -424,7 +431,7 @@ fn main() -> ExitCode {
 
     let mut app = App {
         shots,
-        out: out.unwrap_or_else(default_out),
+        out: if select { None } else { Some(out.unwrap_or_else(default_out)) },
         overlays: Vec::new(),
         drag: None,
         result: None,
