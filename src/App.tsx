@@ -1,9 +1,18 @@
 import { useCallback, useRef, useState } from "react";
-import { Editor } from "./editor/Editor";
+import { EditorWindow } from "./editor/Editor";
 import { Gallery } from "./Gallery";
 
+declare global {
+  interface Window {
+    /** Set by `open_editor` in src-tauri/src/lib.rs on editor windows only. */
+    __SCREENCUP_EDIT__?: string;
+  }
+}
+
+/** Editor windows carry the capture name; the main window is the gallery. */
+const editName = window.__SCREENCUP_EDIT__ ?? null;
+
 export function App() {
-  const [editing, setEditing] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -15,11 +24,7 @@ export function App() {
 
   return (
     <div className="app">
-      {editing ? (
-        <Editor name={editing} onClose={() => setEditing(null)} notify={notify} />
-      ) : (
-        <Gallery onEdit={setEditing} notify={notify} />
-      )}
+      {editName ? <EditorWindow name={editName} notify={notify} /> : <Gallery notify={notify} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

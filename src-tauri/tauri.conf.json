@@ -14,9 +14,12 @@
       {
         "label": "main",
         "title": "Screencup",
-        "width": 1000,
-        "height": 700,
-        "visible": false
+        "width": 980,
+        "height": 640,
+        "minWidth": 640,
+        "minHeight": 420,
+        "visible": false,
+        "decorations": false
       }
     ],
     "security": {

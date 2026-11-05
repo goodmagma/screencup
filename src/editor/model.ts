@@ -13,8 +13,16 @@ interface Base {
 }
 
 export type LineShape = Base & { kind: "arrow" | "line"; points: [number, number, number, number] };
-export type BoxShape = Base & { kind: "rect" | "ellipse" | "highlight" | "blur"; x: number; y: number; w: number; h: number };
-export type TextShape = Base & { kind: "text"; x: number; y: number; text: string };
+export type BoxShape = Base & {
+  kind: "rect" | "ellipse" | "highlight" | "blur";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Degrees, clockwise. Blur is never rotated: its pixels must stay aligned with the image. */
+  rotation?: number;
+};
+export type TextShape = Base & { kind: "text"; x: number; y: number; text: string; rotation?: number };
 export type StepShape = Base & { kind: "step"; x: number; y: number; n: number };
 export type Shape = LineShape | BoxShape | TextShape | StepShape;
 
@@ -30,15 +38,15 @@ export const COLORS = ["#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#2d8cff", "#
 export const SIZES = [2, 4, 7, 12];
 
 export const TOOLS: { tool: Tool; label: string; key: string }[] = [
-  { tool: "select", label: "Select", key: "v" },
-  { tool: "arrow", label: "Arrow", key: "a" },
-  { tool: "line", label: "Line", key: "l" },
-  { tool: "rect", label: "Rectangle", key: "r" },
-  { tool: "ellipse", label: "Ellipse", key: "e" },
-  { tool: "highlight", label: "Highlight", key: "h" },
-  { tool: "blur", label: "Blur", key: "b" },
-  { tool: "text", label: "Text", key: "t" },
-  { tool: "step", label: "Step", key: "n" },
+  { tool: "select", label: "Seleziona", key: "v" },
+  { tool: "arrow", label: "Freccia", key: "a" },
+  { tool: "line", label: "Linea", key: "l" },
+  { tool: "rect", label: "Rettangolo", key: "r" },
+  { tool: "ellipse", label: "Ellisse", key: "e" },
+  { tool: "highlight", label: "Evidenziatore", key: "h" },
+  { tool: "blur", label: "Sfocatura", key: "b" },
+  { tool: "text", label: "Testo", key: "t" },
+  { tool: "step", label: "Numero progressivo", key: "n" },
 ];
 
 /** Keeps annotation sizes readable on large captures: 1 up to ~1600px, growing beyond. */
