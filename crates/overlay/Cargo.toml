@@ -1,0 +1,12 @@
+[package]
+name = "screencup-overlay"
+description = "Frozen-screen region selector: captures all monitors, then lets the user pick a region."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json = "1.0.154"
+softbuffer = "0.4"
+winit = "0.30"
+xcap = "0.9.8"
