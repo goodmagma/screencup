@@ -5,6 +5,10 @@
 //! `q` to its stdin so ffmpeg finalises the file; cancelling kills it and drops the file.
 //! While recording, a small control bar window (excluded from screen capture) shows the
 //! elapsed time with Stop / Cancel.
+//!
+//! With audio enabled in the settings, the video goes to a work file while the microphone
+//! and/or system audio are written to WAVs (see `audio`); on stop everything is muxed into
+//! the library MP4, aligning the tracks on their ends since all stop at the same moment.
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -17,8 +21,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
 
+use crate::audio::{self, AudioCapture, Source};
 use crate::capture::{self, Area, helper_command};
-use crate::{library, show_gallery};
+use crate::{library, settings, show_gallery};
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -34,13 +39,17 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 const STARTUP_CHECK: Duration = Duration::from_millis(400);
 const BAR_LABEL: &str = "recbar";
 /// Control bar size in logical pixels; keep in sync with `.recbar` in src/styles.css.
-const BAR_SIZE: (f64, f64) = (236.0, 44.0);
+const BAR_SIZE: (f64, f64) = (280.0, 44.0);
 const BAR_GAP: f64 = 10.0;
 
 struct Recording {
     child: Child,
+    /// Final file in the library.
     out: PathBuf,
+    /// File ffmpeg writes: `out` itself, or a work file when audio must be muxed in.
+    video: PathBuf,
     log: PathBuf,
+    audio: Vec<AudioCapture>,
 }
 
 #[derive(Default)]
@@ -109,29 +118,70 @@ fn start(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
     let ffmpeg = ffmpeg_exe()?;
     let out = library::new_capture_path(app)?.with_extension("mp4");
     let log = app.path().app_log_dir().map_err(|e| e.to_string())?.join("recording.log");
-    for dir in [out.parent(), log.parent()].into_iter().flatten() {
+    let work = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("recording");
+    for dir in [out.parent(), log.parent(), Some(work.as_path())].into_iter().flatten() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
-    let mut child = helper_command(&ffmpeg)
-        .args(["-hide_banner", "-loglevel", "warning", "-y"])
-        .args(input_args(area))
-        .args(encoder_args(&ffmpeg))
-        .args(["-movflags", "+faststart"])
-        .arg(&out)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(File::create(&log).map_err(|e| format!("{}: {e}", log.display()))?)
-        .spawn()
-        .map_err(|e| format!("{}: {e}", ffmpeg.display()))?;
+    let stem = out.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+
+    // A source that cannot be opened is skipped with a warning; the video still records.
+    let prefs = settings::load(app);
+    let wanted = [
+        (prefs.record_microphone, Source::Microphone, "mic"),
+        (prefs.record_system_audio, Source::System, "system"),
+    ];
+    let mut audio = Vec::new();
+    for (_, source, tag) in wanted.into_iter().filter(|(on, ..)| *on) {
+        match AudioCapture::start(source, work.join(format!("{stem}-{tag}.wav"))) {
+            Ok(c) => audio.push(c),
+            Err(e) => {
+                let _ = app.emit("recording-warning", format!("{}: {e}", source.label()));
+            }
+        }
+    }
+    let video = if audio.is_empty() { out.clone() } else { work.join(format!("{stem}-video.mp4")) };
+
+    let spawned = File::create(&log).map_err(|e| format!("{}: {e}", log.display())).and_then(|stderr| {
+        helper_command(&ffmpeg)
+            .args(["-hide_banner", "-loglevel", "warning", "-y"])
+            .args(input_args(area))
+            .args(encoder_args(&ffmpeg))
+            .args(["-movflags", "+faststart"])
+            .arg(&video)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(stderr)
+            .spawn()
+            .map_err(|e| format!("{}: {e}", ffmpeg.display()))
+    });
+    let mut child = match spawned {
+        Ok(c) => c,
+        Err(e) => {
+            discard_audio(audio);
+            return Err(e);
+        }
+    };
 
     std::thread::sleep(STARTUP_CHECK);
     if let Ok(Some(status)) = child.try_wait() {
-        let _ = std::fs::remove_file(&out);
+        discard_audio(audio);
+        let _ = std::fs::remove_file(&video);
         return Err(format!("ffmpeg exited at start ({status}): {}", read_log(&log)));
     }
-    *app.state::<Recorder>().0.lock().map_err(|e| e.to_string())? = Some(Recording { child, out, log });
-    open_bar(app, area)?;
+    let mic = audio.iter().any(|c| matches!(c.source, Source::Microphone));
+    let system = audio.iter().any(|c| matches!(c.source, Source::System));
+    *app.state::<Recorder>().0.lock().map_err(|e| e.to_string())? =
+        Some(Recording { child, out, video, log, audio });
+    open_bar(app, area, mic, system)?;
     Ok(())
+}
+
+fn discard_audio(audio: Vec<AudioCapture>) {
+    for c in audio {
+        if let Ok(wav) = c.finish() {
+            let _ = std::fs::remove_file(wav);
+        }
+    }
 }
 
 /// Finalises the running recording and adds it to the gallery.
@@ -139,26 +189,120 @@ pub fn stop(app: AppHandle) {
     let Some(mut rec) = app.state::<Recorder>().0.lock().ok().and_then(|mut r| r.take()) else { return };
     close_bar(&app);
     std::thread::spawn(move || {
+        // Video and audio stop at the same moment: the mux aligns the tracks on their ends.
+        for c in &rec.audio {
+            c.request_stop();
+        }
         if let Some(stdin) = rec.child.stdin.as_mut() {
             let _ = stdin.write_all(b"q");
             let _ = stdin.flush();
         }
         drop(rec.child.stdin.take());
-        match wait_with_timeout(&mut rec.child, STOP_TIMEOUT) {
-            Some(status) if status.success() && rec.out.exists() => {
+        let wavs: Vec<PathBuf> = rec
+            .audio
+            .drain(..)
+            .filter_map(|c| {
+                let label = c.source.label();
+                c.finish().map_err(|e| eprintln!("{label}: {e}")).ok()
+            })
+            .collect();
+        let result = match wait_with_timeout(&mut rec.child, STOP_TIMEOUT) {
+            Some(s) if s.success() && rec.video.exists() => finish_file(&app, &rec, &wavs),
+            status => Err(format!("ffmpeg did not finish cleanly ({status:?}): {}", read_log(&rec.log))),
+        };
+        for wav in &wavs {
+            let _ = std::fs::remove_file(wav);
+        }
+        match result {
+            Ok(()) => {
                 let _ = app.emit("capture-added", &rec.out);
-                show_gallery(&app);
             }
-            status => {
-                let msg = format!("ffmpeg did not finish cleanly ({status:?}): {}", read_log(&rec.log));
+            Err(msg) => {
                 eprintln!("{msg}");
                 let _ = app.emit("recording-error", &msg);
-                show_gallery(&app);
                 // A partially written MP4 without its index is unplayable.
-                let _ = std::fs::remove_file(&rec.out);
+                let _ = std::fs::remove_file(&rec.video);
             }
         }
+        show_gallery(&app);
     });
+}
+
+/// Moves the recording into the library, muxing the audio tracks in when there are any.
+/// If muxing fails the silent video is kept rather than lost.
+fn finish_file(app: &AppHandle, rec: &Recording, wavs: &[PathBuf]) -> Result<(), String> {
+    if rec.video == rec.out {
+        return Ok(());
+    }
+    if !wavs.is_empty() {
+        match mux(&rec.video, wavs, &rec.out) {
+            Ok(()) => {
+                let _ = std::fs::remove_file(&rec.video);
+                return Ok(());
+            }
+            Err(e) => {
+                let _ = app.emit("recording-warning", format!("audio not added: {e}"));
+            }
+        }
+    }
+    move_file(&rec.video, &rec.out)
+}
+
+fn move_file(from: &Path, to: &Path) -> Result<(), String> {
+    // The work dir may be on another volume than the library, where rename fails.
+    std::fs::rename(from, to)
+        .or_else(|_| std::fs::copy(from, to).and_then(|_| std::fs::remove_file(from)))
+        .map_err(|e| format!("{}: {e}", to.display()))
+}
+
+fn mux(video: &Path, wavs: &[PathBuf], out: &Path) -> Result<(), String> {
+    let ffmpeg = ffmpeg_exe()?;
+    let video_secs = media_seconds(&ffmpeg, video)?;
+    let mut cmd = helper_command(&ffmpeg);
+    cmd.args(["-hide_banner", "-loglevel", "warning", "-y", "-i"]).arg(video);
+    for wav in wavs {
+        // Positive: the audio started before the first video frame, so skip its head.
+        let lead = audio::wav_seconds(wav)? - video_secs;
+        if lead > 0.0 {
+            cmd.args(["-ss", &format!("{lead:.3}")]);
+        } else if lead < 0.0 {
+            cmd.args(["-itsoffset", &format!("{:.3}", -lead)]);
+        }
+        cmd.arg("-i").arg(wav);
+    }
+    if wavs.len() == 1 {
+        cmd.args(["-map", "0:v", "-map", "1:a"]);
+    } else {
+        let inputs: String = (1..=wavs.len()).map(|i| format!("[{i}:a]")).collect();
+        let graph = format!("{inputs}amix=inputs={}:duration=longest:normalize=0[a]", wavs.len());
+        cmd.args(["-filter_complex", &graph, "-map", "0:v", "-map", "[a]"]);
+    }
+    cmd.args(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart"])
+        .arg(out);
+    let output = cmd.output().map_err(|e| e.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let _ = std::fs::remove_file(out);
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+    }
+}
+
+/// Duration of a media file, parsed from ffmpeg's `Duration: HH:MM:SS.ss` banner.
+fn media_seconds(ffmpeg: &Path, path: &Path) -> Result<f64, String> {
+    let output =
+        helper_command(ffmpeg).args(["-hide_banner", "-i"]).arg(path).output().map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&output.stderr);
+    let stamp = text
+        .split("Duration: ")
+        .nth(1)
+        .and_then(|rest| rest.split(',').next())
+        .ok_or_else(|| format!("no duration for {}", path.display()))?;
+    stamp
+        .trim()
+        .split(':')
+        .try_fold(0.0, |acc, part| part.parse::<f64>().map(|v| acc * 60.0 + v))
+        .map_err(|e| format!("{stamp}: {e}"))
 }
 
 /// Stops the running recording and throws the file away.
@@ -167,7 +311,8 @@ pub fn cancel(app: AppHandle) {
     close_bar(&app);
     let _ = rec.child.kill();
     let _ = rec.child.wait();
-    let _ = std::fs::remove_file(&rec.out);
+    discard_audio(std::mem::take(&mut rec.audio));
+    let _ = std::fs::remove_file(&rec.video);
 }
 
 fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Option<std::process::ExitStatus> {
@@ -311,7 +456,7 @@ pub fn video_frame(path: &Path, size: u32) -> Result<Vec<u8>, String> {
 
 /// Places the bar under the recorded area, above it when there is no room, or inside its
 /// bottom edge for a full-screen recording. It is excluded from screen capture anyway.
-fn open_bar(app: &AppHandle, area: Area) -> Result<(), String> {
+fn open_bar(app: &AppHandle, area: Area, mic: bool, system: bool) -> Result<(), String> {
     let cx = area.x as f64 + area.width as f64 / 2.0;
     let cy = area.y as f64 + area.height as f64 / 2.0;
     let monitor = app.monitor_from_point(cx, cy).ok().flatten();
@@ -333,7 +478,9 @@ fn open_bar(app: &AppHandle, area: Area) -> Result<(), String> {
     let started_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
 
     let bar = WebviewWindowBuilder::new(app, BAR_LABEL, WebviewUrl::App("index.html".into()))
-        .initialization_script(format!("window.__SCREENCUP_RECBAR__ = {{ startedMs: {started_ms} }};"))
+        .initialization_script(format!(
+            "window.__SCREENCUP_RECBAR__ = {{ startedMs: {started_ms}, mic: {mic}, system: {system} }};"
+        ))
         .title("Screencup recording")
         .inner_size(BAR_SIZE.0, BAR_SIZE.1)
         .decorations(false)

@@ -6,6 +6,8 @@ export interface MenuItem {
   onSelect: () => void;
   disabled?: boolean;
   danger?: boolean;
+  /** Shows a check mark: the item is an on/off toggle. */
+  checked?: boolean;
 }
 
 /** A floating list of actions; closes on outside click or Escape. */
@@ -47,6 +49,7 @@ export function Menu({
               item.onSelect();
             }}
           >
+            {item.checked !== undefined && <span className="check">{item.checked ? "✓" : ""}</span>}
             {item.label}
           </button>
         </li>

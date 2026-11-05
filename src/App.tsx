@@ -8,7 +8,7 @@ declare global {
     /** Set by `open_editor` in src-tauri/src/lib.rs on editor windows only. */
     __SCREENCUP_EDIT__?: string;
     /** Set by `open_bar` in src-tauri/src/recorder.rs on the recording control bar. */
-    __SCREENCUP_RECBAR__?: { startedMs: number };
+    __SCREENCUP_RECBAR__?: { startedMs: number; mic: boolean; system: boolean };
   }
 }
 
@@ -17,7 +17,7 @@ const editName = window.__SCREENCUP_EDIT__ ?? null;
 
 export function App() {
   const recbar = window.__SCREENCUP_RECBAR__;
-  if (recbar) return <RecBar startedMs={recbar.startedMs} />;
+  if (recbar) return <RecBar {...recbar} />;
   return <MainWindow />;
 }
 
@@ -28,7 +28,9 @@ function MainWindow() {
   const notify = useCallback((message: string) => {
     setToast(message);
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2500);
+    // Errors and warnings stay longer: they may arrive while the window is still appearing.
+    const ms = /non riuscita|Audio:/.test(message) ? 7000 : 2500;
+    toastTimer.current = window.setTimeout(() => setToast(null), ms);
   }, []);
 
   return (

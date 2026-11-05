@@ -1,11 +1,13 @@
 //! Screencup desktop app: lives in the tray, opens the capture gallery on click and runs
 //! captures from the tray menu, global hotkeys or the gallery toolbar.
 
+mod audio;
 mod capture;
 mod clipboard;
 mod edits;
 mod library;
 mod recorder;
+mod settings;
 
 use capture::CaptureKind;
 use recorder::RecordKind;
@@ -110,6 +112,8 @@ pub fn run() {
             recorder::toggle_recording,
             recorder::stop_recording,
             recorder::cancel_recording,
+            settings::get_settings,
+            settings::set_settings,
             clipboard::copy_capture,
             library::list_captures,
             library::delete_capture,

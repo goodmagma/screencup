@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Square, X } from "lucide-react";
+import { Mic, Square, Volume2, X } from "lucide-react";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /** Floating control bar shown while recording; see `open_bar` in src-tauri/src/recorder.rs. */
-export function RecBar({ startedMs }: { startedMs: number }) {
+export function RecBar({ startedMs, mic, system }: { startedMs: number; mic: boolean; system: boolean }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 250);
@@ -20,6 +20,8 @@ export function RecBar({ startedMs }: { startedMs: number }) {
       <span className="rec-time" data-tauri-drag-region>
         {time}
       </span>
+      {mic && <Mic size={15} className="rec-source" aria-label="Microfono" />}
+      {system && <Volume2 size={15} className="rec-source" aria-label="Audio di sistema" />}
       <button className="rec-stop" onClick={() => invoke("stop_recording")} title="Ferma e salva (Ctrl+Stamp)">
         <Square size={14} fill="currentColor" /> Stop
       </button>

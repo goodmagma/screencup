@@ -113,6 +113,11 @@ button.ghost:hover {
   background: var(--accent);
 }
 
+.menu .check {
+  display: inline-block;
+  width: 18px;
+}
+
 .menu button.danger:hover {
   background: var(--danger);
 }
@@ -623,6 +628,11 @@ button.size.active {
   flex: 1;
   font-variant-numeric: tabular-nums;
   font-size: 15px;
+}
+
+.rec-source {
+  color: var(--muted);
+  flex-shrink: 0;
 }
 
 .rec-stop {

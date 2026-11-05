@@ -17,6 +17,12 @@ interface Capture {
 /** Mirrors `CaptureKind` in src-tauri/src/capture.rs. */
 type CaptureKind = "region" | "screen" | "all";
 
+/** Mirrors `Settings` in src-tauri/src/settings.rs. */
+interface Settings {
+  record_microphone: boolean;
+  record_system_audio: boolean;
+}
+
 /** Mirrors `RecordKind` in src-tauri/src/recorder.rs. */
 type RecordKind = "region" | "screen";
 
@@ -27,6 +33,17 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [context, setContext] = useState<{ x: number; y: number; name: string } | null>(null);
+  const [settings, setSettings] = useState<Settings>({ record_microphone: false, record_system_audio: false });
+
+  useEffect(() => {
+    invoke<Settings>("get_settings").then(setSettings).catch((e) => notify(String(e)));
+  }, [notify]);
+
+  const updateSettings = (patch: Partial<Settings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    invoke("set_settings", { settings: next }).catch((e) => notify(String(e)));
+  };
 
   const refresh = useCallback(
     () =>
@@ -46,10 +63,12 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
     });
     const updated = listen("capture-updated", refresh);
     const failed = listen<string>("recording-error", (event) => notify(`Registrazione non riuscita: ${event.payload}`));
+    const warned = listen<string>("recording-warning", (event) => notify(`Audio: ${event.payload}`));
     return () => {
       added.then((off) => off());
       updated.then((off) => off());
       failed.then((off) => off());
+      warned.then((off) => off());
     };
   }, [refresh, notify]);
 
@@ -179,6 +198,16 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
           menu={[
             { label: "Registra una regione (Ctrl+Stamp)", onSelect: () => record("region") },
             { label: "Registra lo schermo (Ctrl+Maiusc+Stamp)", onSelect: () => record("screen") },
+            {
+              label: "Microfono",
+              checked: settings.record_microphone,
+              onSelect: () => updateSettings({ record_microphone: !settings.record_microphone }),
+            },
+            {
+              label: "Audio di sistema",
+              checked: settings.record_system_audio,
+              onSelect: () => updateSettings({ record_system_audio: !settings.record_system_audio }),
+            },
           ]}
         />
         <BigButton
