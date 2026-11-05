@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:overlay": "cargo build -p screencup-overlay",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:sidecars": "node scripts/prepare-sidecars.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
