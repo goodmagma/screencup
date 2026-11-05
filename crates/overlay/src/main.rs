@@ -5,6 +5,9 @@
 //! the crop is cut from the original capture in physical pixels, so the saved image is exactly
 //! what was on screen when the overlay was invoked, whatever happens underneath meanwhile.
 //!
+//! Hovering highlights the window under the cursor (see `snap`); the mouse wheel steps into
+//! its controls and back out. A click without dragging selects exactly that element.
+//!
 //! Usage:
 //!   screencup-overlay [--out FILE.png]   select a region, save it, print a JSON result on stdout
 //!   screencup-overlay --select           select a region, print it as JSON without saving pixels
@@ -22,14 +25,21 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
-use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::monitor::MonitorHandle;
 use winit::window::{CursorIcon, Window, WindowId, WindowLevel};
 use xcap::image::{RgbaImage, imageops};
 
+mod snap;
+
 const ACCENT: u32 = 0x2D8CFF;
+/// Outline of the window or control a click would capture.
+const SNAP_COLOR: u32 = 0xE5484D;
+const SNAP_BORDER: i32 = 3;
+/// A press that moves less than this (in pixels) is a click, not a drag.
+const DRAG_MIN: i32 = 4;
 const WHITE: u32 = 0xFFFFFF;
 /// Source pixels shown by the magnifier per side (odd, so there is a centre pixel).
 const MAG_SRC: i32 = 17;
@@ -72,6 +82,9 @@ impl Rect {
     }
     fn height(&self) -> i32 {
         self.y1 - self.y0
+    }
+    fn is_drag(&self) -> bool {
+        self.width() >= DRAG_MIN || self.height() >= DRAG_MIN
     }
 }
 
@@ -130,9 +143,29 @@ struct Overlay {
     bright: Vec<u32>,
     dim: Vec<u32>,
     cursor: Option<(i32, i32)>,
+    /// Window or control under the cursor, in window pixels.
+    hover: Option<Rect>,
 }
 
 impl Overlay {
+    /// Window pixel -> physical virtual-desktop pixel.
+    fn to_desktop(&self, shot: &Shot, (x, y): (i32, i32)) -> (i32, i32) {
+        let (iw, ih) = shot.img.dimensions();
+        let (w, h) = (self.size.0.max(1) as i64, self.size.1.max(1) as i64);
+        (shot.x + (x as i64 * iw as i64 / w) as i32, shot.y + (y as i64 * ih as i64 / h) as i32)
+    }
+
+    /// Desktop bounds -> window rectangle, clipped to this monitor.
+    fn to_window(&self, shot: &Shot, b: snap::Bounds) -> Option<Rect> {
+        let (iw, ih) = shot.img.dimensions();
+        let monitor = snap::Bounds { x0: shot.x, y0: shot.y, x1: shot.x + iw as i32, y1: shot.y + ih as i32 };
+        let b = b.intersect(&monitor)?;
+        let (w, h) = (self.size.0 as i64, self.size.1 as i64);
+        let sx = |x: i32| ((x - shot.x) as i64 * w / iw as i64) as i32;
+        let sy = |y: i32| ((y - shot.y) as i64 * h / ih as i64) as i32;
+        Some(Rect { x0: sx(b.x0), y0: sy(b.y0), x1: sx(b.x1), y1: sy(b.y1) })
+    }
+
     fn draw(&mut self, shot: &Shot, selection: Option<Rect>) {
         let PhysicalSize { width, height } = self.window.inner_size();
         let (Some(nw), Some(nh)) = (NonZeroU32::new(width), NonZeroU32::new(height)) else {
@@ -148,20 +181,33 @@ impl Overlay {
         let (w, h) = (width as i32, height as i32);
         let mut cv = Canvas { buf: &mut buf, w, h };
 
-        match (selection, self.cursor) {
-            (Some(r), _) => {
-                for y in r.y0..r.y1 {
-                    let row = (y * w) as usize;
-                    let span = row + r.x0 as usize..row + r.x1 as usize;
-                    cv.buf[span.clone()].copy_from_slice(&self.bright[span]);
-                }
+        let undim = |cv: &mut Canvas, r: Rect| {
+            for y in r.y0..r.y1 {
+                let row = (y * w) as usize;
+                let span = row + r.x0 as usize..row + r.x1 as usize;
+                cv.buf[span.clone()].copy_from_slice(&self.bright[span]);
+            }
+        };
+        match (selection, self.hover, self.cursor) {
+            (Some(r), _, _) => {
+                undim(&mut cv, r);
                 cv.outline(r, ACCENT);
             }
-            (None, Some((cx, cy))) => {
+            (None, hover, Some((cx, cy))) => {
+                if let Some(r) = hover {
+                    undim(&mut cv, r);
+                    // Drawn inside the element, so a full-screen window still shows its border.
+                    for i in 0..SNAP_BORDER {
+                        cv.outline(
+                            Rect { x0: r.x0 + i + 1, y0: r.y0 + i + 1, x1: r.x1 - i - 1, y1: r.y1 - i - 1 },
+                            SNAP_COLOR,
+                        );
+                    }
+                }
                 cv.fill(0, cy, w, cy + 1, ACCENT);
                 cv.fill(cx, 0, cx + 1, h, ACCENT);
             }
-            (None, None) => {}
+            (None, _, None) => {}
         }
 
         if let Some((cx, cy)) = self.cursor {
@@ -198,6 +244,12 @@ struct Drag {
 
 struct App {
     shots: Vec<Shot>,
+    /// Windows and controls of the frozen screen, for click-to-capture.
+    snaps: Vec<snap::SnapWindow>,
+    /// How deep into the elements under the cursor the snap goes: 0 = whole window.
+    snap_depth: usize,
+    /// Window the depth applies to; moving onto another window resets the depth.
+    snap_window: Option<snap::Bounds>,
     /// Where to save the crop; `None` in `--select` mode.
     out: Option<PathBuf>,
     overlays: Vec<Overlay>,
@@ -210,6 +262,25 @@ struct App {
 impl App {
     fn selection_for(&self, id: WindowId) -> Option<Rect> {
         self.drag.as_ref().filter(|d| d.window == id).map(|d| Rect::from_points(d.start, d.end))
+    }
+
+    /// Recomputes the highlighted element of overlay `idx` from its cursor and the depth.
+    fn update_hover(&mut self, idx: usize) {
+        let o = &self.overlays[idx];
+        let shot = &self.shots[o.shot];
+        let chain = o.cursor.map(|p| snap::chain_at(&self.snaps, o.to_desktop(shot, p))).unwrap_or_default();
+        if chain.first() != self.snap_window.as_ref() {
+            self.snap_window = chain.first().copied();
+            self.snap_depth = 0;
+        }
+        self.snap_depth = self.snap_depth.min(chain.len().saturating_sub(1));
+        let hover = chain.get(self.snap_depth).and_then(|b| o.to_window(shot, *b));
+        self.overlays[idx].hover = hover;
+    }
+
+    /// The drag rectangle once it has really moved; a mere click keeps showing the hover.
+    fn drag_rect_for(&self, id: WindowId) -> Option<Rect> {
+        self.selection_for(id).filter(Rect::is_drag)
     }
 
     fn finish(&mut self, event_loop: &ActiveEventLoop, idx: usize, r: Rect) {
@@ -301,6 +372,7 @@ impl ApplicationHandler for App {
                 bright: Vec::new(),
                 dim: Vec::new(),
                 cursor: None,
+                hover: None,
             };
             // Windows never sends a paint to a hidden window, so show first and paint right
             // away. The window class has no background brush, so until the paint lands the
@@ -318,7 +390,7 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
-                let selection = self.selection_for(id);
+                let selection = self.drag_rect_for(id);
                 let o = &mut self.overlays[idx];
                 o.draw(&self.shots[o.shot], selection);
             }
@@ -329,12 +401,29 @@ impl ApplicationHandler for App {
                 o.cursor = Some(p);
                 if let Some(d) = self.drag.as_mut().filter(|d| d.window == id) {
                     d.end = (p.0.clamp(0, w), p.1.clamp(0, h));
+                } else {
+                    self.update_hover(idx);
                 }
-                o.window.request_redraw();
+                self.overlays[idx].window.request_redraw();
+            }
+            // Wheel down steps into the controls under the cursor, wheel up back out.
+            WindowEvent::MouseWheel { delta, .. } if self.drag.is_none() => {
+                let dy = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32,
+                };
+                if dy < 0.0 {
+                    self.snap_depth += 1;
+                } else if dy > 0.0 {
+                    self.snap_depth = self.snap_depth.saturating_sub(1);
+                }
+                self.update_hover(idx);
+                self.overlays[idx].window.request_redraw();
             }
             WindowEvent::CursorLeft { .. } => {
                 let o = &mut self.overlays[idx];
                 o.cursor = None;
+                o.hover = None;
                 o.window.request_redraw();
             }
             WindowEvent::MouseInput { state, button, .. } => match (button, state) {
@@ -345,10 +434,14 @@ impl ApplicationHandler for App {
                 }
                 (MouseButton::Left, ElementState::Released) => {
                     if let Some(r) = self.selection_for(id) {
-                        if r.width() >= 2 && r.height() >= 2 {
+                        if r.is_drag() && r.width() >= 2 && r.height() >= 2 {
                             return self.finish(event_loop, idx, r);
                         }
                         self.drag = None;
+                        // A click captures the highlighted window or control.
+                        if let Some(hover) = self.overlays[idx].hover {
+                            return self.finish(event_loop, idx, hover);
+                        }
                     }
                     self.overlays[idx].window.request_redraw();
                 }
@@ -429,8 +522,16 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    // Right after the capture, before any overlay window exists, so the list matches the
+    // frozen picture and does not contain the overlay itself.
+    let snaps = snap::collect();
+    eprintln!("found {} window(s) to snap to in {} ms", snaps.len(), t0.elapsed().as_millis());
+
     let mut app = App {
         shots,
+        snaps,
+        snap_depth: 0,
+        snap_window: None,
         out: if select { None } else { Some(out.unwrap_or_else(default_out)) },
         overlays: Vec::new(),
         drag: None,
