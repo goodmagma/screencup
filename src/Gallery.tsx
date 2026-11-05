@@ -121,7 +121,7 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
   return (
     <div className="gallery">
       <header className="titlebar" data-tauri-drag-region>
-        <img src="/app-icon.svg" alt="" className="titlebar-icon" data-tauri-drag-region />
+        <img src="/tray-icon.svg" alt="" className="titlebar-icon" data-tauri-drag-region />
         <span data-tauri-drag-region>Screencup</span>
         <div className="titlebar-buttons">
           <button onClick={() => invoke("open_settings")} title="Impostazioni">

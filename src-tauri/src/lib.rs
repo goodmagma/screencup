@@ -146,7 +146,7 @@ pub fn run() {
                 ],
             )?;
             TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().cloned().ok_or("missing app icon")?)
+                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .tooltip("Screencup")
                 .menu(&menu)
                 // Left click opens the gallery; the menu stays on right click. Linux tray
