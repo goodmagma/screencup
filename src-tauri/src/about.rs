@@ -31,7 +31,7 @@ pub fn open_repository(app: AppHandle) -> Result<(), String> {
 pub fn open_licenses(app: AppHandle) -> Result<(), String> {
     let dir = app.path().resource_dir().map_err(|e| e.to_string())?.join("licenses");
     if !dir.is_dir() {
-        let missing = crate::i18n::text(&app, "cartella delle licenze non trovata", "licences folder not found");
+        let missing = crate::i18n::text(&app, "licenses-missing");
         return Err(format!("{}: {missing}", dir.display()));
     }
     app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
@@ -50,7 +50,7 @@ pub fn show(app: &AppHandle) -> Result<(), String> {
     }
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
         .initialization_script("window.__SCREENCUP_ABOUT__ = true;")
-        .title(crate::i18n::text(app, "Informazioni su Screencup", "About Screencup"))
+        .title(crate::i18n::text(app, "about"))
         .icon(crate::small_icon())
         .map_err(|e| e.to_string())?
         .inner_size(420.0, 400.0)

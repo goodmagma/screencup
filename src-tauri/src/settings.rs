@@ -139,7 +139,12 @@ pub fn open_library_dir(app: AppHandle) -> Result<(), String> {
 /// Native folder picker for the library location; `None` when dismissed.
 #[tauri::command]
 pub async fn pick_library_dir(app: AppHandle) -> Option<PathBuf> {
-    app.dialog().file().set_title(crate::i18n::text(&app, "Cartella delle catture", "Captures folder")).blocking_pick_folder()?.into_path().ok()
+    app.dialog()
+        .file()
+        .set_title(crate::i18n::text(&app, "library-folder"))
+        .blocking_pick_folder()?
+        .into_path()
+        .ok()
 }
 
 #[tauri::command]
@@ -178,7 +183,7 @@ pub fn show(app: &AppHandle) -> Result<(), String> {
     }
     WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html".into()))
         .initialization_script("window.__SCREENCUP_SETTINGS__ = true;")
-        .title(crate::i18n::text(app, "Impostazioni di Screencup", "Screencup settings"))
+        .title(crate::i18n::text(app, "settings-title"))
         .icon(crate::small_icon())
         .map_err(|e| e.to_string())?
         .inner_size(640.0, 640.0)

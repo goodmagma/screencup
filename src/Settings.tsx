@@ -48,8 +48,12 @@ const HOTKEY_ROWS: { key: keyof Hotkeys; label: Key }[] = [
 
 /** Languages offered besides "auto"; each named in its own language. */
 const LANGUAGES = [
-  { value: "it", label: "Italiano" },
+  { value: "de", label: "Deutsch" },
   { value: "en", label: "English" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "it", label: "Italiano" },
+  { value: "pt", label: "Português" },
 ];
 
 /** Must match `FRAMERATES` in src-tauri/src/settings.rs. */

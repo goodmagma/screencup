@@ -57,8 +57,12 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": [
+          "English",
           "Italian",
-          "English"
+          "Spanish",
+          "French",
+          "German",
+          "Portuguese"
         ],
         "displayLanguageSelector": false
       }

@@ -57,24 +57,24 @@ pub fn small_icon() -> tauri::image::Image<'static> {
 
 /// The tray menu, in the current UI language.
 fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let tr = |it, en| i18n::text(app, it, en);
+    let tr = |key| i18n::text(app, key);
     let item = |id: &str, label: &str| MenuItem::with_id(app, id, label, true, None::<&str>);
     Menu::with_items(
         app,
         &[
-            &item("region", tr("Cattura una regione", "Capture a region"))?,
-            &item("screen", tr("Cattura lo schermo", "Capture the screen"))?,
-            &item("all", tr("Cattura tutti gli schermi", "Capture all screens"))?,
+            &item("region", tr("capture-region"))?,
+            &item("screen", tr("capture-screen"))?,
+            &item("all", tr("capture-all"))?,
             &PredefinedMenuItem::separator(app)?,
-            &item("rec-region", tr("Registra una regione", "Record a region"))?,
-            &item("rec-screen", tr("Registra lo schermo", "Record the screen"))?,
-            &item("rec-stop", tr("Ferma la registrazione", "Stop recording"))?,
+            &item("rec-region", tr("record-region"))?,
+            &item("rec-screen", tr("record-screen"))?,
+            &item("rec-stop", tr("record-stop"))?,
             &PredefinedMenuItem::separator(app)?,
-            &item("gallery", tr("Apri la galleria", "Open the gallery"))?,
-            &item("settings", tr("Impostazioni...", "Settings..."))?,
-            &item("about", tr("Informazioni su Screencup", "About Screencup"))?,
+            &item("gallery", tr("open-gallery"))?,
+            &item("settings", tr("settings-menu"))?,
+            &item("about", tr("about"))?,
             &PredefinedMenuItem::separator(app)?,
-            &item("quit", tr("Esci da Screencup", "Quit Screencup"))?,
+            &item("quit", tr("quit"))?,
         ],
     )
 }

@@ -96,7 +96,8 @@ fn capture_entries(dir: &Path) -> impl Iterator<Item = (String, PathBuf)> {
         .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
         .map(|e| (e.file_name().to_string_lossy().into_owned(), e.path()))
         .filter(|(_, p)| {
-            p.extension().is_some_and(|x| x.eq_ignore_ascii_case(IMAGE_EXT) || x.eq_ignore_ascii_case(VIDEO_EXT))
+            p.extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case(IMAGE_EXT) || x.eq_ignore_ascii_case(VIDEO_EXT))
         })
 }
 
