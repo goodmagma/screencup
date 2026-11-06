@@ -311,3 +311,76 @@ pub async fn open_capture_with(window: tauri::WebviewWindow, name: String) -> Re
         Err("not supported on this system".into())
     }
 }
+
+/// Image formats accepted when files are dropped on the gallery; they are converted to PNG.
+const IMPORT_IMAGES: [&str; 8] = ["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff"];
+
+/// Copies files dropped on the gallery into the library, leaving the originals untouched:
+/// images become new PNG captures, MP4 recordings are copied as they are. Files already in
+/// the library (dragged out of the gallery and back) and other types are skipped. Returns
+/// the new captures, in order.
+#[tauri::command]
+pub async fn import_captures(app: AppHandle, paths: Vec<PathBuf>) -> Result<Vec<PathBuf>, String> {
+    let library = dir(&app)?;
+    std::fs::create_dir_all(&library).map_err(|e| format!("{}: {e}", library.display()))?;
+    let handle = app.clone();
+    // Compared canonicalised: the drop may spell the same folder differently.
+    let library = std::fs::canonicalize(&library).unwrap_or(library);
+    let imported = tauri::async_runtime::spawn_blocking(move || {
+        let mut imported = Vec::new();
+        let mut errors = Vec::new();
+        for src in paths {
+            let folder = src.parent().map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()));
+            if folder.as_deref() == Some(library.as_path()) {
+                continue;
+            }
+            let ext = src.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            let result = if IMPORT_IMAGES.contains(&ext.as_str()) {
+                import_image(&handle, &src)
+            } else if ext == VIDEO_EXT {
+                new_capture_path(&handle).and_then(|dest| {
+                    let dest = unique(dest.with_extension(VIDEO_EXT));
+                    std::fs::copy(&src, &dest).map(|_| dest).map_err(|e| format!("{}: {e}", src.display()))
+                })
+            } else {
+                continue;
+            };
+            match result {
+                Ok(dest) => imported.push(dest),
+                Err(e) => errors.push(e),
+            }
+        }
+        (imported, errors)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let (imported, errors) = imported;
+    for dest in &imported {
+        let _ = app.emit("capture-added", dest);
+    }
+    if !imported.is_empty() {
+        enforce_limit_async(&app);
+    }
+    match errors.first() {
+        Some(e) if imported.is_empty() => Err(e.clone()),
+        _ => Ok(imported),
+    }
+}
+
+fn import_image<R: Runtime>(app: &AppHandle<R>, src: &Path) -> Result<PathBuf, String> {
+    let img = image::open(src).map_err(|e| format!("{}: {e}", src.display()))?;
+    let dest = unique(new_capture_path(app)?);
+    img.save_with_format(&dest, image::ImageFormat::Png).map_err(|e| format!("{}: {e}", dest.display()))?;
+    Ok(dest)
+}
+
+/// `path`, or `path` with -2, -3… before the extension when that name is taken (several
+/// files imported within the same millisecond).
+fn unique(path: PathBuf) -> PathBuf {
+    if !path.exists() {
+        return path;
+    }
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+    (2..).map(|n| path.with_file_name(format!("{stem}-{n}.{ext}"))).find(|p| !p.exists()).expect("unbounded")
+}

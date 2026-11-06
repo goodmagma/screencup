@@ -2,7 +2,8 @@ import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Camera, CloudUpload, Info, Link2, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { Camera, CloudUpload, ImageDown, Info, Link2, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
 import { formatAccelerator, patchSettings, type SettingsData } from "./Settings";
 import { t } from "./i18n";
 import { BigButton, Menu, type MenuItem } from "./ui";
@@ -53,6 +54,48 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   };
   const [context, setContext] = useState<{ x: number; y: number; name: string } | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
+  /** Files dragged over the window; see `import_captures` in src-tauri/src/library.rs. */
+  const [dropping, setDropping] = useState(false);
+  const importing = useRef(false);
+  const libraryPaths = useRef(new Set<string>());
+  libraryPaths.current = new Set(captures.map((c) => c.path));
+
+  const importFiles = (paths: string[]) => {
+    importing.current = true;
+    invoke<string[]>("import_captures", { paths })
+      .then((files) =>
+        notify(
+          files.length === 0
+            ? t("import.none")
+            : files.length === 1
+              ? t("import.one")
+              : t("import.many", { count: files.length }),
+        ),
+      )
+      .catch((e) => notify(t("import.failed", { error: String(e) }), true))
+      .finally(() => {
+        importing.current = false;
+      });
+  };
+
+  useEffect(() => {
+    const off = getCurrentWebview().onDragDropEvent((event) => {
+      const p = event.payload;
+      if (p.type === "enter") {
+        // Captures dragged out of this gallery and back are not an import.
+        setDropping(p.paths.some((path) => !libraryPaths.current.has(path)));
+      } else if (p.type === "leave") setDropping(false);
+      else if (p.type === "drop") {
+        setDropping(false);
+        const outside = p.paths.filter((path) => !libraryPaths.current.has(path));
+        if (outside.length) importFiles(outside);
+      }
+    });
+    return () => {
+      off.then((f) => f());
+    };
+  }, []);
+
   /** Newer version found by the background check (src-tauri/src/updater.rs). */
   const [update, setUpdate] = useState<{ version: string } | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -173,6 +216,8 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       refresh();
       const name = baseName(event.payload);
       selectOnly(name);
+      // Imports report once, with their count.
+      if (importing.current) return;
       notify(name.endsWith(".mp4") ? t("gallery.recordingSaved") : t("gallery.captured"));
     });
     const updated = listen("capture-updated", refresh);
@@ -306,6 +351,12 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
 
   return (
     <div className="gallery">
+      {dropping && (
+        <div className="drop-overlay">
+          <ImageDown size={44} />
+          <span>{t("import.drop")}</span>
+        </div>
+      )}
       <header className="titlebar" data-tauri-drag-region>
         <img src="/app-icon.svg" alt="" className="titlebar-icon" data-tauri-drag-region />
         <span data-tauri-drag-region>Screencup</span>

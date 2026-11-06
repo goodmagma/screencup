@@ -203,6 +203,11 @@ export const it = {
   "video.gifHint": "Tratto di {length}. Le GIF lunghe o grandi diventano pesanti.",
   "rec.webcam": "Webcam",
   "webcam.unavailable": "Webcam non disponibile",
+  "import.drop": "Rilascia per copiare nella libreria",
+  "import.one": "Immagine importata",
+  "import.many": "{count} file importati",
+  "import.none": "Nessun file importabile: sono accettate immagini (PNG, JPG, BMP, GIF, WebP, TIFF) e video MP4",
+  "import.failed": "Importazione non riuscita: {error}",
 };
 
 export type Key = keyof typeof it;

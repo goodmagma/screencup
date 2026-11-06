@@ -198,4 +198,9 @@ export const es: Record<Key, string> = {
   "video.gifHint": "Duración {length}. Los GIF largos o grandes pesan mucho.",
   "rec.webcam": "Cámara",
   "webcam.unavailable": "Cámara no disponible",
+  "import.drop": "Suelta para copiar en la biblioteca",
+  "import.one": "Imagen importada",
+  "import.many": "{count} archivos importados",
+  "import.none": "Nada que importar: se aceptan imágenes (PNG, JPG, BMP, GIF, WebP, TIFF) y vídeos MP4",
+  "import.failed": "La importación ha fallado: {error}",
 };
