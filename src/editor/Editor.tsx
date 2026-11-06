@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { KonvaEventObject, Node as KonvaNode } from "konva/lib/Node";
 import type Konva from "konva";
 import { invoke } from "@tauri-apps/api/core";
+import { t as tr } from "../i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Circle as CircleIcon,
@@ -559,7 +560,7 @@ export function Editor({ name, onClose, notify }: Props) {
       stage.batchDraw();
     }
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) throw new Error("Codifica PNG non riuscita");
+    if (!blob) throw new Error(tr("editor.pngFailed"));
     return new Uint8Array(await blob.arrayBuffer());
   };
 
@@ -586,7 +587,7 @@ export function Editor({ name, onClose, notify }: Props) {
     if (!(await save())) return false;
     try {
       await invoke("copy_capture", { name });
-      notify("Copiata negli appunti");
+      notify(tr("common.copied"));
       return true;
     } catch (e) {
       notify(String(e));
@@ -661,23 +662,23 @@ export function Editor({ name, onClose, notify }: Props) {
         <RibbonButton
           icon={<LogOut size={20} />}
           tint="#30a46c"
-          label="Copia & Esci"
+          label={tr("editor.copyAndExit")}
           onClick={copyAndClose}
           disabled={busy}
-          title="Salva, copia negli appunti e chiudi"
+          title={tr("editor.copyAndExitHint")}
         />
         <RibbonButton
           icon={<Save size={20} />}
           tint="#2d8cff"
-          label="Salva"
+          label={tr("editor.save")}
           onClick={saveAndClose}
           disabled={busy}
-          title="Salva e chiudi (Ctrl+S salva senza chiudere)"
+          title={tr("editor.saveHint")}
         />
         <RibbonButton
           icon={<Copy size={20} />}
           tint="#30a46c"
-          label="Copia immagine"
+          label={tr("editor.copyImage")}
           onClick={copyImage}
           disabled={busy}
           title="Ctrl+C"
@@ -686,7 +687,7 @@ export function Editor({ name, onClose, notify }: Props) {
         <RibbonButton
           icon={<Undo2 size={20} />}
           tint="#f76b15"
-          label="Annulla"
+          label={tr("editor.undo")}
           onClick={undo}
           disabled={history.index === 0}
           title="Ctrl+Z"
@@ -694,7 +695,7 @@ export function Editor({ name, onClose, notify }: Props) {
         <RibbonButton
           icon={<Redo2 size={20} />}
           tint="#f76b15"
-          label="Ripeti"
+          label={tr("editor.redo")}
           onClick={redo}
           disabled={history.index === history.stack.length - 1}
           title="Ctrl+Y"
@@ -702,10 +703,10 @@ export function Editor({ name, onClose, notify }: Props) {
         <RibbonButton
           icon={<Trash2 size={20} />}
           tint="#e5484d"
-          label="Elimina"
+          label={tr("common.delete")}
           onClick={removeSelected}
           disabled={!selected}
-          title="Elimina l'elemento selezionato (Canc)"
+          title={tr("editor.deleteHint")}
         />
         <div className="ribbon-sep" />
         <div className="ribbon-group">
@@ -720,7 +721,7 @@ export function Editor({ name, onClose, notify }: Props) {
               />
             ))}
           </div>
-          <span>Colore</span>
+          <span>{tr("editor.color")}</span>
         </div>
         <div className="ribbon-group">
           <div className="sizes">
@@ -729,16 +730,16 @@ export function Editor({ name, onClose, notify }: Props) {
                 key={i}
                 className={i === sizeIdx ? "size active" : "size"}
                 onClick={() => pickSize(i)}
-                title={["Sottile", "Medio", "Spesso", "Molto spesso"][i]}
+                title={tr((["editor.size0", "editor.size1", "editor.size2", "editor.size3"] as const)[i])}
               >
                 <span style={{ height: Math.min(12, size + 1) }} />
               </button>
             ))}
           </div>
-          <span>Spessore</span>
+          <span>{tr("editor.size")}</span>
         </div>
         <div className="spacer" />
-        <RibbonButton icon={<X size={20} />} tint="#f76b15" label="Chiudi" onClick={requestClose} />
+        <RibbonButton icon={<X size={20} />} tint="#f76b15" label={tr("common.close")} onClick={requestClose} />
       </header>
 
       <div className="editor-body">
@@ -748,7 +749,7 @@ export function Editor({ name, onClose, notify }: Props) {
               key={t.tool}
               className={t.tool === tool ? "tool-button active" : "tool-button"}
               onClick={() => setTool(t.tool)}
-              title={`${t.label} (${t.key.toUpperCase()})`}
+              title={`${tr(`tool.${t.tool}`)} (${t.key.toUpperCase()})`}
             >
               {TOOL_ICONS[t.tool]}
             </button>
@@ -838,7 +839,7 @@ export function Editor({ name, onClose, notify }: Props) {
         <span>{img ? `${img.width} x ${img.height}` : ""}</span>
         <div className="spacer" />
         <span className="zoom-value">{Math.round(zoom * 100)}%</span>
-        <button onClick={() => zoomTo(zoom / ZOOM_STEP)} title="Riduci">
+        <button onClick={() => zoomTo(zoom / ZOOM_STEP)} title={tr("editor.zoomOut")}>
           <Minus size={14} />
         </button>
         <input
@@ -848,27 +849,27 @@ export function Editor({ name, onClose, notify }: Props) {
           value={Math.round(zoom * 100)}
           onChange={(e) => zoomTo(Number(e.target.value) / 100)}
         />
-        <button onClick={() => zoomTo(zoom * ZOOM_STEP)} title="Ingrandisci">
+        <button onClick={() => zoomTo(zoom * ZOOM_STEP)} title={tr("editor.zoomIn")}>
           <Plus size={14} />
         </button>
         <button className={fit ? "fit active" : "fit"} onClick={() => setFit(true)}>
-          Adatta
+          {tr("editor.fit")}
         </button>
       </footer>
 
       {askClose && (
         <div className="modal-backdrop">
           <div className="modal">
-            <p>Ci sono modifiche non salvate.</p>
+            <p>{tr("editor.unsaved")}</p>
             <div className="modal-buttons">
               <button onClick={saveAndClose} disabled={busy}>
-                Salva ed esci
+                {tr("editor.saveAndExit")}
               </button>
               <button className="danger" onClick={onClose}>
-                Esci senza salvare
+                {tr("editor.exitWithoutSaving")}
               </button>
               <button className="ghost" onClick={() => setAskClose(false)}>
-                Annulla
+                {tr("common.cancel")}
               </button>
             </div>
           </div>

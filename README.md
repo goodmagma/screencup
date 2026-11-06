@@ -43,7 +43,8 @@
 - The frame and the panel never appear in the video.
 
 **Settings**
-- Library folder, start at login, global hotkeys, frame rate, audio sources.
+- Language (Italian or English; follows the system by default), library folder, start at
+  login, global hotkeys, frame rate, audio sources.
 
 ## Default hotkeys
 

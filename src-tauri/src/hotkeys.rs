@@ -25,12 +25,13 @@ pub struct Bindings(Mutex<HashMap<u32, Action>>);
 /// Replaces every registered shortcut with `keys`; returns one message per failure.
 pub fn apply(app: &AppHandle, keys: &Hotkeys) -> Vec<String> {
     clear(app);
+    let tr = |it, en| crate::i18n::text(app, it, en);
     let wanted = [
-        ("Cattura una regione", &keys.capture_region, Action::Capture(CaptureKind::Region)),
-        ("Cattura lo schermo", &keys.capture_screen, Action::Capture(CaptureKind::Screen)),
-        ("Cattura tutti gli schermi", &keys.capture_all, Action::Capture(CaptureKind::All)),
-        ("Registra una regione", &keys.record_region, Action::Record(RecordKind::Region)),
-        ("Registra lo schermo", &keys.record_screen, Action::Record(RecordKind::Screen)),
+        (tr("Cattura una regione", "Capture a region"), &keys.capture_region, Action::Capture(CaptureKind::Region)),
+        (tr("Cattura lo schermo", "Capture the screen"), &keys.capture_screen, Action::Capture(CaptureKind::Screen)),
+        (tr("Cattura tutti gli schermi", "Capture all screens"), &keys.capture_all, Action::Capture(CaptureKind::All)),
+        (tr("Registra una regione", "Record a region"), &keys.record_region, Action::Record(RecordKind::Region)),
+        (tr("Registra lo schermo", "Record the screen"), &keys.record_screen, Action::Record(RecordKind::Screen)),
     ];
     let mut failures = Vec::new();
     let mut bound = HashMap::new();

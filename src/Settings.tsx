@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { FolderOpen, X } from "lucide-react";
+import { type Key, t } from "./i18n";
 
 /** Mirrors `Settings` in src-tauri/src/settings.rs. */
 export interface SettingsData {
@@ -15,6 +16,8 @@ export interface SettingsData {
   hotkeys: Hotkeys;
   /** 0 = no limit. */
   max_captures: number;
+  /** "auto" (system language), "it" or "en". */
+  language: string;
 }
 
 /**
@@ -35,32 +38,39 @@ interface Hotkeys {
   record_screen: string;
 }
 
-const HOTKEY_ROWS: { key: keyof Hotkeys; label: string }[] = [
-  { key: "capture_region", label: "Cattura una regione" },
-  { key: "capture_screen", label: "Cattura lo schermo" },
-  { key: "capture_all", label: "Cattura tutti gli schermi" },
-  { key: "record_region", label: "Registra una regione / Stop" },
-  { key: "record_screen", label: "Registra lo schermo / Stop" },
+const HOTKEY_ROWS: { key: keyof Hotkeys; label: Key }[] = [
+  { key: "capture_region", label: "settings.hkCaptureRegion" },
+  { key: "capture_screen", label: "settings.hkCaptureScreen" },
+  { key: "capture_all", label: "settings.hkCaptureAll" },
+  { key: "record_region", label: "settings.hkRecordRegion" },
+  { key: "record_screen", label: "settings.hkRecordScreen" },
+];
+
+/** Languages offered besides "auto"; each named in its own language. */
+const LANGUAGES = [
+  { value: "it", label: "Italiano" },
+  { value: "en", label: "English" },
 ];
 
 /** Must match `FRAMERATES` in src-tauri/src/settings.rs. */
 const FRAMERATES = [15, 30, 60];
 
-const KEY_NAMES: Record<string, string> = {
-  Control: "Ctrl",
-  Shift: "Maiusc",
-  Alt: "Alt",
-  Super: "Win",
-  PrintScreen: "Stamp",
-  Space: "Spazio",
-  Escape: "Esc",
-};
+const keyName = (part: string): string | undefined =>
+  ({
+    Control: "Ctrl",
+    Shift: t("key.Shift"),
+    Alt: "Alt",
+    Super: "Win",
+    PrintScreen: t("key.PrintScreen"),
+    Space: t("key.Space"),
+    Escape: "Esc",
+  })[part];
 
-/** `Control+Shift+KeyA` -> `Ctrl + Maiusc + A`. */
-const formatAccelerator = (acc: string) =>
+/** `Control+Shift+KeyA` -> `Ctrl + Shift + A`, with key names in the UI language. */
+export const formatAccelerator = (acc: string) =>
   acc
     .split("+")
-    .map((part) => KEY_NAMES[part] ?? part.replace(/^Key/, "").replace(/^Digit/, ""))
+    .map((part) => keyName(part) ?? part.replace(/^Key/, "").replace(/^Digit/, ""))
     .join(" + ");
 
 const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "OS"]);
@@ -116,9 +126,9 @@ function HotkeyInput({ value, onChange }: { value: string; onChange: (v: string)
     <button
       className={listening ? "hotkey listening" : "hotkey"}
       onClick={() => setListening(true)}
-      title="Clicca e premi la combinazione (Esc annulla, Backspace rimuove)"
+      title={t("settings.hkInputHint")}
     >
-      {listening ? "Premi la combinazione..." : value ? formatAccelerator(value) : "Nessuna"}
+      {listening ? t("settings.hkListening") : value ? formatAccelerator(value) : t("settings.hkNone")}
     </button>
   );
 }
@@ -161,7 +171,7 @@ function MaxCapturesInput({ value, onChange }: { value: number; onChange: (v: nu
   };
   return (
     <label className="setting-select">
-      <span>Numero massimo di catture (le eccedenti vanno nel cestino)</span>
+      <span>{t("settings.limitCount")}</span>
       <input
         type="number"
         min={MIN_MAX_CAPTURES}
@@ -227,40 +237,51 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
 
   return (
     <div className="settings">
-      <Section title="Generale">
+      <Section title={t("settings.general")}>
+        <label className="setting-select">
+          <span>{t("settings.language")}</span>
+          <select value={settings.language} onChange={(e) => update({ language: e.target.value })}>
+            <option value="auto">{t("settings.languageAuto")}</option>
+            {LANGUAGES.map((l) => (
+              <option key={l.value} value={l.value}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <Check
-          label="Avvia Screencup all'accesso al sistema"
+          label={t("settings.autostart")}
           checked={autostart}
           onChange={toggleAutostart}
         />
         <Check
-          label="Copia negli appunti dopo ogni screenshot"
+          label={t("settings.copyAfterCapture")}
           checked={settings.copy_after_capture}
           onChange={(v) => update({ copy_after_capture: v })}
         />
         <Check
-          label="Mostra la galleria dopo una cattura o una registrazione"
+          label={t("settings.showGallery")}
           checked={settings.show_gallery_after_capture}
           onChange={(v) => update({ show_gallery_after_capture: v })}
         />
       </Section>
 
-      <Section title="Cartella delle catture">
+      <Section title={t("settings.library")}>
         <div className="folder-row">
           <code title={settings.library_dir ?? defaultDir}>{settings.library_dir ?? defaultDir}</code>
-          <button className="ghost" onClick={() => invoke("open_library_dir").catch((e) => notify(String(e)))} title="Apri la cartella">
+          <button className="ghost" onClick={() => invoke("open_library_dir").catch((e) => notify(String(e)))} title={t("settings.openFolder")}>
             <FolderOpen size={16} />
           </button>
         </div>
         <div className="row-buttons">
-          <button onClick={pickFolder}>Cambia...</button>
+          <button onClick={pickFolder}>{t("settings.change")}</button>
           <button className="ghost" disabled={!settings.library_dir} onClick={() => update({ library_dir: null })}>
-            Usa la cartella predefinita
+            {t("settings.useDefault")}
           </button>
         </div>
-        <p className="hint">Le catture già fatte restano nella cartella precedente.</p>
+        <p className="hint">{t("settings.libraryHint")}</p>
         <Check
-          label="Elimina le catture più vecchie oltre un numero massimo"
+          label={t("settings.limit")}
           checked={settings.max_captures > 0}
           onChange={(v) => update({ max_captures: v ? DEFAULT_MAX_CAPTURES : 0 })}
         />
@@ -269,11 +290,11 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
         )}
       </Section>
 
-      <Section title="Scorciatoie da tastiera">
+      <Section title={t("settings.hotkeys")}>
         <div className="hotkeys">
           {HOTKEY_ROWS.map(({ key, label }) => (
             <div className="hotkey-row" key={key}>
-              <span>{label}</span>
+              <span>{t(label)}</span>
               <HotkeyInput
                 value={settings.hotkeys[key]}
                 onChange={(v) => update({ hotkeys: { ...settings.hotkeys, [key]: v } })}
@@ -282,7 +303,7 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
                 className="ghost icon"
                 disabled={!settings.hotkeys[key]}
                 onClick={() => update({ hotkeys: { ...settings.hotkeys, [key]: "" } })}
-                title="Rimuovi la scorciatoia"
+                title={t("settings.hkRemove")}
               >
                 <X size={14} />
               </button>
@@ -292,32 +313,32 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
         {hotkeyErrors.length > 0 && (
           <ul className="errors">
             {hotkeyErrors.map((e) => (
-              <li key={e}>Non registrata: {e}</li>
+              <li key={e}>{t("settings.hkNotRegistered", { hotkey: e })}</li>
             ))}
           </ul>
         )}
       </Section>
 
-      <Section title="Registrazione video">
+      <Section title={t("settings.recording")}>
         <Check
-          label="Registra il microfono"
+          label={t("settings.recordMic")}
           checked={settings.record_microphone}
           onChange={(v) => update({ record_microphone: v })}
         />
         <Check
-          label="Registra l'audio di sistema"
-          hint="Solo Windows per ora"
+          label={t("settings.recordSystem")}
+          hint={t("settings.windowsOnly")}
           checked={settings.record_system_audio}
           onChange={(v) => update({ record_system_audio: v })}
         />
         <Check
-          label="Evidenzia i clic del mouse"
-          hint="Un cerchio giallo (sinistro) o blu (destro) dove si clicca; solo Windows per ora"
+          label={t("settings.showClicks")}
+          hint={t("settings.showClicksHint")}
           checked={settings.show_clicks}
           onChange={(v) => update({ show_clicks: v })}
         />
         <label className="setting-select">
-          <span>Fotogrammi al secondo</span>
+          <span>{t("settings.framerate")}</span>
           <select value={settings.framerate} onChange={(e) => update({ framerate: Number(e.target.value) })}>
             {FRAMERATES.map((f) => (
               <option key={f} value={f}>

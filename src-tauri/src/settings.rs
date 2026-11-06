@@ -29,6 +29,8 @@ pub struct Settings {
     pub hotkeys: Hotkeys,
     /// Keep at most this many captures; older ones go to the trash. 0 = no limit.
     pub max_captures: u32,
+    /// UI language: "auto" (system locale), "it" or "en". See src-tauri/src/i18n.rs.
+    pub language: String,
 }
 
 /// Global shortcuts as accelerator strings (e.g. `Control+Shift+PrintScreen`); empty = none.
@@ -54,6 +56,7 @@ impl Default for Settings {
             framerate: 30,
             hotkeys: Hotkeys::default(),
             max_captures: 0,
+            language: "auto".into(),
         }
     }
 }
@@ -107,7 +110,11 @@ pub fn set_settings(app: AppHandle, mut settings: Settings) -> Result<Vec<String
     if !FRAMERATES.contains(&settings.framerate) {
         settings.framerate = Settings::default().framerate;
     }
+    let old_lang = crate::i18n::lang(&app);
     save(&app, &settings)?;
+    if crate::i18n::lang(&app) != old_lang {
+        crate::refresh_tray_menu(&app);
+    }
     crate::library::enforce_limit_async(&app);
     // Gallery and settings window both edit settings; each refreshes on this event.
     let _ = app.emit("settings-changed", &settings);
@@ -132,7 +139,7 @@ pub fn open_library_dir(app: AppHandle) -> Result<(), String> {
 /// Native folder picker for the library location; `None` when dismissed.
 #[tauri::command]
 pub async fn pick_library_dir(app: AppHandle) -> Option<PathBuf> {
-    app.dialog().file().set_title("Cartella delle catture").blocking_pick_folder()?.into_path().ok()
+    app.dialog().file().set_title(crate::i18n::text(&app, "Cartella delle catture", "Captures folder")).blocking_pick_folder()?.into_path().ok()
 }
 
 #[tauri::command]
@@ -171,7 +178,7 @@ pub fn show(app: &AppHandle) -> Result<(), String> {
     }
     WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html".into()))
         .initialization_script("window.__SCREENCUP_SETTINGS__ = true;")
-        .title("Impostazioni di Screencup")
+        .title(crate::i18n::text(app, "Impostazioni di Screencup", "Screencup settings"))
         .icon(crate::small_icon())
         .map_err(|e| e.to_string())?
         .inner_size(640.0, 640.0)

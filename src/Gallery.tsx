@@ -3,7 +3,8 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Camera, CloudUpload, Info, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
-import { patchSettings, type SettingsData } from "./Settings";
+import { formatAccelerator, patchSettings, type SettingsData } from "./Settings";
+import { t } from "./i18n";
 import { BigButton, Menu, type MenuItem } from "./ui";
 
 /** Mirrors `Capture` in src-tauri/src/library.rs. */
@@ -26,7 +27,10 @@ const DRAG_START = 6;
 const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 const win = getCurrentWindow();
 
-export function Gallery({ notify }: { notify: (message: string) => void }) {
+/** Hotkey shown after a menu label, e.g. " (Shift + PrtSc)"; nothing when unset. */
+const hotkeyHint = (acc?: string) => (acc ? ` (${formatAccelerator(acc)})` : "");
+
+export function Gallery({ notify }: { notify: (message: string, long?: boolean) => void }) {
   const [captures, setCaptures] = useState<Capture[]>([]);
   /** Selected capture names; the single-item actions use `selected`. */
   const [selection, setSelection] = useState<string[]>([]);
@@ -64,11 +68,11 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
       refresh();
       const name = baseName(event.payload);
       selectOnly(name);
-      notify(name.endsWith(".mp4") ? "Registrazione salvata" : "Catturata e copiata negli appunti");
+      notify(name.endsWith(".mp4") ? t("gallery.recordingSaved") : t("gallery.captured"));
     });
     const updated = listen("capture-updated", refresh);
-    const failed = listen<string>("recording-error", (event) => notify(`Registrazione non riuscita: ${event.payload}`));
-    const warned = listen<string>("recording-warning", (event) => notify(`Audio: ${event.payload}`));
+    const failed = listen<string>("recording-error", (event) => notify(t("gallery.recordingFailed", { error: event.payload }), true));
+    const warned = listen<string>("recording-warning", (event) => notify(t("gallery.audioWarning", { warning: event.payload }), true));
     return () => {
       added.then((off) => off());
       updated.then((off) => off());
@@ -89,7 +93,7 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
   const copy = useCallback(
     (name: string) =>
       invoke("copy_capture", { name })
-        .then(() => notify("Copiata negli appunti"))
+        .then(() => notify(t("common.copied")))
         .catch((e) => notify(String(e))),
     [notify],
   );
@@ -100,7 +104,7 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
       invoke("delete_captures", { names })
         .then(() => {
           setSelection((sel) => sel.filter((n) => !names.includes(n)));
-          notify(names.length === 1 ? "Spostata nel cestino" : `${names.length} catture spostate nel cestino`);
+          notify(names.length === 1 ? t("gallery.trashedOne") : t("gallery.trashedMany", { count: names.length }));
           return refresh();
         })
         .catch((e) => notify(String(e))),
@@ -165,17 +169,17 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
   const itemActions = (name: string): MenuItem[] => {
     const video = isVideo(name);
     return [
-      { label: video ? "Riproduci" : "Modifica", onSelect: () => edit(name) },
-      { label: "Copia negli appunti", onSelect: () => copy(name), disabled: video },
-      { label: "Apri con l'app predefinita", onSelect: () => open(name) },
-      { label: "Mostra nella cartella", onSelect: () => reveal(name) },
-      { label: "Elimina", onSelect: () => remove([name]), danger: true },
+      { label: video ? t("gallery.play") : t("gallery.edit"), onSelect: () => edit(name) },
+      { label: t("common.copyToClipboard"), onSelect: () => copy(name), disabled: video },
+      { label: t("gallery.openDefault"), onSelect: () => open(name) },
+      { label: t("gallery.reveal"), onSelect: () => reveal(name) },
+      { label: t("common.delete"), onSelect: () => remove([name]), danger: true },
     ];
   };
 
   /** Context menu for a multiple selection: only what applies to all of them. */
   const multiActions = (names: string[]): MenuItem[] => [
-    { label: `Elimina ${names.length} catture`, onSelect: () => remove(names), danger: true },
+    { label: t("gallery.deleteMany", { count: names.length }), onSelect: () => remove(names), danger: true },
   ];
 
   return (
@@ -184,19 +188,19 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
         <img src="/tray-icon.svg" alt="" className="titlebar-icon" data-tauri-drag-region />
         <span data-tauri-drag-region>Screencup</span>
         <div className="titlebar-buttons">
-          <button onClick={() => invoke("open_about")} title="Informazioni su Screencup">
+          <button onClick={() => invoke("open_about")} title={t("gallery.about")}>
             <Info size={15} />
           </button>
-          <button onClick={() => invoke("open_settings")} title="Impostazioni">
+          <button onClick={() => invoke("open_settings")} title={t("common.settings")}>
             <Settings size={15} />
           </button>
-          <button onClick={() => win.minimize()} title="Riduci a icona">
+          <button onClick={() => win.minimize()} title={t("common.minimize")}>
             <Minus size={16} />
           </button>
-          <button onClick={() => win.toggleMaximize()} title="Ingrandisci">
+          <button onClick={() => win.toggleMaximize()} title={t("common.maximize")}>
             <Maximize2 size={14} />
           </button>
-          <button onClick={() => win.hide()} title="Chiudi (Esc)">
+          <button onClick={() => win.hide()} title={t("gallery.closeEsc")}>
             <X size={16} />
           </button>
         </div>
@@ -204,7 +208,7 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
 
       <div className="gallery-grid" onClick={() => selectOnly(null)}>
         {captures.length === 0 ? (
-          <p className="empty">Nessuna cattura. Premi Stamp o usa il menu della tray icon.</p>
+          <p className="empty">{t("gallery.empty")}</p>
         ) : (
           captures.map((c) => (
             <figure
@@ -246,30 +250,30 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
       <footer className="action-bar">
         <BigButton
           icon={<Camera size={28} />}
-          label="Cattura una regione"
+          label={t("gallery.captureRegion")}
           ring="#e5484d"
           onClick={() => capture("region")}
           menu={[
-            { label: "Cattura una regione (Stamp)", onSelect: () => capture("region") },
-            { label: "Cattura lo schermo (Maiusc+Stamp)", onSelect: () => capture("screen") },
-            { label: "Cattura tutti gli schermi", onSelect: () => capture("all") },
+            { label: t("gallery.captureRegion") + hotkeyHint(settings?.hotkeys.capture_region), onSelect: () => capture("region") },
+            { label: t("gallery.captureScreen") + hotkeyHint(settings?.hotkeys.capture_screen), onSelect: () => capture("screen") },
+            { label: t("gallery.captureAll") + hotkeyHint(settings?.hotkeys.capture_all), onSelect: () => capture("all") },
           ]}
         />
         <BigButton
           icon={<Video size={28} />}
-          label="Registra video"
+          label={t("gallery.recordVideo")}
           ring="#e5484d"
           onClick={() => record("region")}
           menu={[
-            { label: "Registra una regione (Ctrl+Stamp)", onSelect: () => record("region") },
-            { label: "Registra lo schermo (Ctrl+Maiusc+Stamp)", onSelect: () => record("screen") },
+            { label: t("gallery.recordRegion") + hotkeyHint(settings?.hotkeys.record_region), onSelect: () => record("region") },
+            { label: t("gallery.recordScreen") + hotkeyHint(settings?.hotkeys.record_screen), onSelect: () => record("screen") },
             {
-              label: "Microfono",
+              label: t("common.microphone"),
               checked: settings?.record_microphone ?? false,
               onSelect: () => updateSettings({ record_microphone: !settings?.record_microphone }),
             },
             {
-              label: "Audio di sistema",
+              label: t("common.systemAudio"),
               checked: settings?.record_system_audio ?? false,
               onSelect: () => updateSettings({ record_system_audio: !settings?.record_system_audio }),
             },
@@ -277,7 +281,7 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
         />
         <BigButton
           icon={<PencilRuler size={26} />}
-          label={selected && isVideo(selected) ? "Riproduci" : "Modifica..."}
+          label={selected && isVideo(selected) ? t("gallery.play") : t("gallery.editMenu")}
           ring="#30a46c"
           disabled={!selected}
           onClick={() => selected && edit(selected)}
@@ -285,22 +289,22 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
         />
         <BigButton
           icon={<CloudUpload size={28} />}
-          label="Pubblica"
+          label={t("gallery.publish")}
           ring="#2d8cff"
           disabled={!selected}
           onClick={() => selected && copy(selected)}
           menu={
             selected
               ? [
-                  { label: "Copia negli appunti", onSelect: () => copy(selected) },
-                  { label: "Mostra nella cartella", onSelect: () => reveal(selected) },
-                  { label: "Cloud (in arrivo)", onSelect: () => {}, disabled: true },
+                  { label: t("common.copyToClipboard"), onSelect: () => copy(selected) },
+                  { label: t("gallery.reveal"), onSelect: () => reveal(selected) },
+                  { label: t("gallery.cloudSoon"), onSelect: () => {}, disabled: true },
                 ]
               : undefined
           }
         />
         <div className="spacer" />
-        <BigButton icon={<X size={28} />} label="Chiudi" ring="#f76b15" onClick={() => win.hide()} />
+        <BigButton icon={<X size={28} />} label={t("common.close")} ring="#f76b15" onClick={() => win.hide()} />
       </footer>
 
       {context && (

@@ -8,6 +8,7 @@ mod clickfx;
 mod clipboard;
 mod edits;
 mod hotkeys;
+mod i18n;
 mod library;
 mod recorder;
 mod settings;
@@ -52,6 +53,37 @@ fn anchor_bottom_right(app: &AppHandle, w: &tauri::WebviewWindow) {
 /// when Windows scales it down to taskbar size.
 pub fn small_icon() -> tauri::image::Image<'static> {
     tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png")).expect("valid tray.png")
+}
+
+/// The tray menu, in the current UI language.
+fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let tr = |it, en| i18n::text(app, it, en);
+    let item = |id: &str, label: &str| MenuItem::with_id(app, id, label, true, None::<&str>);
+    Menu::with_items(
+        app,
+        &[
+            &item("region", tr("Cattura una regione", "Capture a region"))?,
+            &item("screen", tr("Cattura lo schermo", "Capture the screen"))?,
+            &item("all", tr("Cattura tutti gli schermi", "Capture all screens"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("rec-region", tr("Registra una regione", "Record a region"))?,
+            &item("rec-screen", tr("Registra lo schermo", "Record the screen"))?,
+            &item("rec-stop", tr("Ferma la registrazione", "Stop recording"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("gallery", tr("Apri la galleria", "Open the gallery"))?,
+            &item("settings", tr("Impostazioni...", "Settings..."))?,
+            &item("about", tr("Informazioni su Screencup", "About Screencup"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("quit", tr("Esci da Screencup", "Quit Screencup"))?,
+        ],
+    )
+}
+
+/// Rebuilds the tray menu after the UI language changed.
+pub fn refresh_tray_menu(app: &AppHandle) {
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id("main"), tray_menu(app)) {
+        let _ = tray.set_menu(Some(menu));
+    }
 }
 
 #[tauri::command]
@@ -106,6 +138,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
+            i18n::get_language,
             about::about_info,
             about::open_about,
             about::open_licenses,
@@ -147,28 +180,10 @@ pub fn run() {
 
             hotkeys::apply(app.handle(), &settings::load(app.handle()).hotkeys);
 
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &MenuItem::with_id(app, "region", "Cattura una regione", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "screen", "Cattura lo schermo", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "all", "Cattura tutti gli schermi", true, None::<&str>)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "rec-region", "Registra una regione", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "rec-screen", "Registra lo schermo", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "rec-stop", "Ferma la registrazione", true, None::<&str>)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "gallery", "Apri la galleria", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "settings", "Impostazioni...", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "about", "Informazioni su Screencup", true, None::<&str>)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "quit", "Esci da Screencup", true, None::<&str>)?,
-                ],
-            )?;
             TrayIconBuilder::with_id("main")
                 .icon(small_icon())
                 .tooltip("Screencup")
-                .menu(&menu)
+                .menu(&tray_menu(app.handle())?)
                 // Left click opens the gallery; the menu stays on right click. Linux tray
                 // implementations report no clicks, so there the menu is the only entry point.
                 .show_menu_on_left_click(false)

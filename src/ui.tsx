@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { t } from "./i18n";
 
 export interface MenuItem {
   label: string;
@@ -84,7 +85,7 @@ export function BigButton({
         <span className="big-label">{label}</span>
       </button>
       {menu && (
-        <button className="caret" onClick={() => setOpen(!open)} title="Altre opzioni">
+        <button className="caret" onClick={() => setOpen(!open)} title={t("common.moreOptions")}>
           <ChevronDown size={16} strokeWidth={3} />
         </button>
       )}

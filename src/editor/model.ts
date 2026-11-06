@@ -37,16 +37,16 @@ export const COLORS = ["#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#2d8cff", "#
 /** Stroke widths for the S / M / L / XL buttons, before scaling to the image size. */
 export const SIZES = [2, 4, 7, 12];
 
-export const TOOLS: { tool: Tool; label: string; key: string }[] = [
-  { tool: "select", label: "Seleziona", key: "v" },
-  { tool: "arrow", label: "Freccia", key: "a" },
-  { tool: "line", label: "Linea", key: "l" },
-  { tool: "rect", label: "Rettangolo", key: "r" },
-  { tool: "ellipse", label: "Ellisse", key: "e" },
-  { tool: "highlight", label: "Evidenziatore", key: "h" },
-  { tool: "blur", label: "Sfocatura", key: "b" },
-  { tool: "text", label: "Testo", key: "t" },
-  { tool: "step", label: "Numero progressivo", key: "n" },
+export const TOOLS: { tool: Tool; key: string }[] = [
+  { tool: "select", key: "v" },
+  { tool: "arrow", key: "a" },
+  { tool: "line", key: "l" },
+  { tool: "rect", key: "r" },
+  { tool: "ellipse", key: "e" },
+  { tool: "highlight", key: "h" },
+  { tool: "blur", key: "b" },
+  { tool: "text", key: "t" },
+  { tool: "step", key: "n" },
 ];
 
 /** Keeps annotation sizes readable on large captures: 1 up to ~1600px, growing beyond. */

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ExternalLink, FileText } from "lucide-react";
+import { t } from "./i18n";
 
 /** Mirrors `AboutInfo` in src-tauri/src/about.rs. */
 interface AboutInfo {
@@ -22,22 +23,22 @@ export function AboutWindow({ notify }: { notify: (message: string) => void }) {
     <div className="about">
       <img src="/app-icon.svg" alt="" className="about-icon" />
       <h1>Screencup</h1>
-      <p className="about-version">Versione {info?.version ?? "…"}</p>
-      <p className="about-tagline">Screenshot, annotazioni e registrazioni dello schermo.</p>
+      <p className="about-version">{t("about.version", { version: info?.version ?? "…" })}</p>
+      <p className="about-tagline">{t("about.tagline")}</p>
       <div className="about-links">
         <button onClick={() => run("open_repository")} title={info?.repository}>
           <ExternalLink size={16} />
-          <span>Pagina GitHub</span>
+          <span>{t("about.github")}</span>
         </button>
         <button className="ghost" onClick={() => run("open_licenses")}>
           <FileText size={16} />
-          <span>Licenze</span>
+          <span>{t("about.licenses")}</span>
         </button>
       </div>
       <p className="about-legal">
-        © 2026 goodmagma · Licenza MIT
+        © 2026 goodmagma · {t("about.license")}
         <br />
-        Include ffmpeg, distribuito con la propria licenza.
+        {t("about.ffmpeg")}
       </p>
     </div>
   );

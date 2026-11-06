@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Crop, Mic, MicOff, MousePointerClick, Move, Settings, Volume2, VolumeX, X } from "lucide-react";
 import { patchSettings, type SettingsData } from "./Settings";
+import { t } from "./i18n";
 
 /** Mirrors `RecordingStarted` in src-tauri/src/recorder.rs. */
 interface Started {
@@ -61,17 +62,17 @@ export function RecBar() {
     const time = `${pad(Math.floor(secs / 3600))}:${pad(Math.floor(secs / 60) % 60)}:${pad(secs % 60)}`;
     return (
       <div className="recbar" data-tauri-drag-region>
-        <button className="rec-main stop" onClick={() => invoke("stop_recording")} title="Ferma e salva">
+        <button className="rec-main stop" onClick={() => invoke("stop_recording")} title={t("rec.stopAndSave")}>
           <span className="rec-square" />
         </button>
         <span className="rec-dot" data-tauri-drag-region />
         <span className="rec-time" data-tauri-drag-region>
           {time}
         </span>
-        {started.mic && <Mic size={16} className="rec-source" aria-label="Microfono" />}
-        {started.system && <Volume2 size={16} className="rec-source" aria-label="Audio di sistema" />}
+        {started.mic && <Mic size={16} className="rec-source" aria-label={t("common.microphone")} />}
+        {started.system && <Volume2 size={16} className="rec-source" aria-label={t("common.systemAudio")} />}
         <div className="spacer" data-tauri-drag-region />
-        <button className="rec-close" onClick={() => invoke("cancel_recording")} title="Annulla la registrazione">
+        <button className="rec-close" onClick={() => invoke("cancel_recording")} title={t("rec.cancelRecording")}>
           <X size={16} />
         </button>
       </div>
@@ -80,31 +81,31 @@ export function RecBar() {
 
   return (
     <div className="recbar" data-tauri-drag-region>
-      <button className="rec-main" onClick={record} disabled={busy || !settings} title="Avvia la registrazione">
+      <button className="rec-main" onClick={record} disabled={busy || !settings} title={t("rec.start")}>
         <span className="rec-circle" />
       </button>
       <Toggle
         icon={settings?.record_microphone ? <Mic size={20} /> : <MicOff size={20} />}
-        label="Microfono"
+        label={t("common.microphone")}
         on={settings?.record_microphone}
         onClick={() => toggle({ record_microphone: !settings?.record_microphone })}
       />
       <Toggle
         icon={settings?.record_system_audio ? <Volume2 size={20} /> : <VolumeX size={20} />}
-        label="Sistema"
+        label={t("rec.system")}
         on={settings?.record_system_audio}
         onClick={() => toggle({ record_system_audio: !settings?.record_system_audio })}
       />
       <Toggle
         icon={<MousePointerClick size={20} />}
-        label="Clic"
+        label={t("rec.clicks")}
         on={settings?.show_clicks}
         onClick={() => toggle({ show_clicks: !settings?.show_clicks })}
       />
-      <Toggle icon={<Crop size={20} />} label="Riseleziona" onClick={() => invoke("reselect_region")} />
-      <Toggle icon={<Settings size={20} />} label="Impostazioni" onClick={() => invoke("open_settings")} />
+      <Toggle icon={<Crop size={20} />} label={t("rec.reselect")} onClick={() => invoke("reselect_region")} />
+      <Toggle icon={<Settings size={20} />} label={t("common.settings")} onClick={() => invoke("open_settings")} />
       <div className="spacer" data-tauri-drag-region />
-      <button className="rec-close" onClick={() => invoke("cancel_recording")} title="Annulla">
+      <button className="rec-close" onClick={() => invoke("cancel_recording")} title={t("common.cancel")}>
         <X size={16} />
       </button>
     </div>
@@ -183,7 +184,7 @@ export function RecFrame({ width, height, margin, corner, grip }: FrameProps) {
               onMouseDown={press(() => win.startResizeDragging(dir))}
             />
           ))}
-          <div className="recframe-grip" title="Sposta l'area" onMouseDown={press(() => win.startDragging())}>
+          <div className="recframe-grip" title={t("rec.moveArea")} onMouseDown={press(() => win.startDragging())}>
             <Move size={20} />
           </div>
         </>

@@ -1,10 +1,12 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorWindow } from "./editor/Editor";
 import { Gallery } from "./Gallery";
 import { ClickFx } from "./ClickFx";
 import { RecBar, RecFrame } from "./RecBar";
 import { SettingsWindow } from "./Settings";
 import { AboutWindow } from "./About";
+import { t } from "./i18n";
 
 declare global {
   interface Window {
@@ -38,12 +40,25 @@ function MainWindow() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
-  const notify = useCallback((message: string) => {
+  /** `long`: errors and warnings stay longer, they may arrive while the window is appearing. */
+  const notify = useCallback((message: string, long = false) => {
     setToast(message);
     window.clearTimeout(toastTimer.current);
-    // Errors and warnings stay longer: they may arrive while the window is still appearing.
-    const ms = /non riuscita|Audio:/.test(message) ? 7000 : 2500;
+    const ms = long ? 7000 : 2500;
     toastTimer.current = window.setTimeout(() => setToast(null), ms);
+  }, []);
+
+  // Titles of the windows the backend opened, in the current language (it may have changed
+  // since the window was created).
+  useEffect(() => {
+    const title = editName
+      ? t("editor.title", { name: editName })
+      : window.__SCREENCUP_SETTINGS__
+        ? t("settings.title")
+        : window.__SCREENCUP_ABOUT__
+          ? t("about.title")
+          : null;
+    if (title) getCurrentWindow().setTitle(title).catch(() => {});
   }, []);
 
   return (
