@@ -1,7 +1,8 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Crop, Mic, MicOff, MousePointerClick, Settings, Volume2, VolumeX, X } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Crop, Mic, MicOff, MousePointerClick, Move, Settings, Volume2, VolumeX, X } from "lucide-react";
 import { patchSettings, type SettingsData } from "./Settings";
 
 /** Mirrors `RecordingStarted` in src-tauri/src/recorder.rs. */
@@ -110,13 +111,85 @@ export function RecBar() {
   );
 }
 
-/** Dashed frame around the area to record; see `open_frame` in src-tauri/src/recorder.rs. */
-export function RecFrame({ width, height }: { width: number; height: number }) {
-  useEffect(() => document.documentElement.classList.add("clickfx"), []);
+/** Geometry from `open_frame` in src-tauri/src/recorder.rs, in logical pixels. */
+export interface FrameProps {
+  /** Initial area size, physical pixels. */
+  width: number;
+  height: number;
+  /** Ring around the area holding the dashed line and the resize grips. */
+  margin: number;
+  /** Side of the corner resize handles, from the window corners. */
+  corner: number;
+  /** Diameter of the move handle in the middle. */
+  grip: number;
+}
+
+type Edge = "North" | "South" | "East" | "West" | "NorthWest" | "NorthEast" | "SouthWest" | "SouthEast";
+
+const EDGES: { dir: Edge; cursor: string; style: CSSProperties }[] = [
+  { dir: "North", cursor: "ns-resize", style: { top: 0, left: 0, right: 0, height: "var(--m)" } },
+  { dir: "South", cursor: "ns-resize", style: { bottom: 0, left: 0, right: 0, height: "var(--m)" } },
+  { dir: "West", cursor: "ew-resize", style: { left: 0, top: 0, bottom: 0, width: "var(--m)" } },
+  { dir: "East", cursor: "ew-resize", style: { right: 0, top: 0, bottom: 0, width: "var(--m)" } },
+  { dir: "NorthWest", cursor: "nwse-resize", style: { top: 0, left: 0 } },
+  { dir: "NorthEast", cursor: "nesw-resize", style: { top: 0, right: 0 } },
+  { dir: "SouthWest", cursor: "nesw-resize", style: { bottom: 0, left: 0 } },
+  { dir: "SouthEast", cursor: "nwse-resize", style: { bottom: 0, right: 0 } },
+];
+
+const areaSize = (margin: number) => ({
+  width: Math.round((window.innerWidth - 2 * margin) * window.devicePixelRatio) & ~1,
+  height: Math.round((window.innerHeight - 2 * margin) * window.devicePixelRatio) & ~1,
+});
+
+/**
+ * Dashed frame around the area to record; see `open_frame` in src-tauri/src/recorder.rs.
+ * Until recording starts, the ring and corners resize it and the middle handle moves it
+ * (the OS does the dragging); afterwards it only shows the area.
+ */
+export function RecFrame({ width, height, margin, corner, grip }: FrameProps) {
+  const [size, setSize] = useState({ width, height });
+  const [recording, setRecording] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.classList.add("clickfx");
+    const onResize = () => setSize(areaSize(margin));
+    window.addEventListener("resize", onResize);
+    const off = listen("recording-started", () => setRecording(true));
+    return () => {
+      window.removeEventListener("resize", onResize);
+      off.then((f) => f());
+    };
+  }, [margin]);
+
+  const press = (action: () => Promise<void>) => (e: ReactMouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    action().catch(() => {});
+  };
+  const win = getCurrentWindow();
+  const vars = { "--m": `${margin}px`, "--c": `${corner}px`, "--g": `${grip}px` } as CSSProperties;
+
   return (
-    <div className="recframe">
+    <div className={recording ? "recframe recording" : "recframe"} style={vars}>
+      <div className="recframe-line" />
+      {!recording && (
+        <>
+          {EDGES.map(({ dir, cursor, style }) => (
+            <div
+              key={dir}
+              className={dir.length > 5 ? "recframe-corner" : "recframe-edge"}
+              style={{ ...style, cursor }}
+              onMouseDown={press(() => win.startResizeDragging(dir))}
+            />
+          ))}
+          <div className="recframe-grip" title="Sposta l'area" onMouseDown={press(() => win.startDragging())}>
+            <Move size={20} />
+          </div>
+        </>
+      )}
       <span className="recframe-size">
-        {width} × {height}
+        {size.width} × {size.height}
       </span>
     </div>
   );

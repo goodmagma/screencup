@@ -45,8 +45,17 @@ const BAR_SIZE: (f64, f64) = (480.0, 76.0);
 const BAR_GAP: f64 = 12.0;
 const FRAME_LABEL: &str = "recframe";
 /// Width of the ring around the area where the dashed frame is drawn, in logical pixels:
-/// the frame stays outside the recorded pixels.
-const FRAME_MARGIN: f64 = 4.0;
+/// the frame stays outside the recorded pixels. While preparing, the ring is also the grip
+/// to resize the area. Keep in sync with `RecFrame` in src/RecBar.tsx.
+const FRAME_MARGIN: f64 = 8.0;
+/// Corner resize handles: squares of this side from the window corners (they reach past
+/// the ring into the area), in logical pixels.
+const FRAME_CORNER: f64 = FRAME_MARGIN + 6.0;
+/// Diameter of the move handle in the middle of the area, in logical pixels.
+const FRAME_GRIP: f64 = 44.0;
+/// Box for the size label at the top right inside the area, in logical pixels; the window
+/// shape keeps it visible. Keep in sync with `.recframe-size` in src/styles.css.
+const FRAME_LABEL_BOX: (f64, f64) = (96.0, 22.0);
 
 struct Recording {
     child: Child,
@@ -155,8 +164,7 @@ fn prepare(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
         },
         RecordKind::Screen => capture::screen_under_cursor(app)?,
     };
-    // yuv420p H.264 needs even dimensions.
-    let area = Area { width: area.width & !1, height: area.height & !1, ..area };
+    let area = even_area(area);
     if area.width < 16 || area.height < 16 {
         return Err("area too small to record".into());
     }
@@ -174,7 +182,16 @@ fn begin_reporting(app: &AppHandle) {
 
 /// Starts recording the prepared area.
 fn begin(app: &AppHandle) -> Result<(), String> {
-    let Some(area) = take_prepared(app) else { return Ok(()) };
+    let Some(prepared) = take_prepared(app) else { return Ok(()) };
+    // The frame may have been moved or resized since the area was picked.
+    let frame = app.get_webview_window(FRAME_LABEL);
+    let area = even_area(frame.as_ref().map_or(prepared, frame_area));
+    if area.width < 16 || area.height < 16 {
+        return Err("area too small to record".into());
+    }
+    if let Some(frame) = &frame {
+        lock_frame(frame, area);
+    }
 
     let ffmpeg = ffmpeg_exe()?;
     let out = library::new_capture_path(app)?.with_extension("mp4");
@@ -241,7 +258,9 @@ fn begin(app: &AppHandle) -> Result<(), String> {
         click_fx: start_click_fx(app, area, prefs.show_clicks),
     });
     let started_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
-    let _ = app.emit_to(BAR_LABEL, "recording-started", RecordingStarted { started_ms, mic, system });
+    let started = RecordingStarted { started_ms, mic, system };
+    let _ = app.emit_to(BAR_LABEL, "recording-started", &started);
+    let _ = app.emit_to(FRAME_LABEL, "recording-started", &started);
     Ok(())
 }
 
@@ -557,9 +576,9 @@ pub fn video_frame(path: &Path, size: u32) -> Result<Vec<u8>, String> {
 
 // --- control bar -----------------------------------------------------------------------
 
-/// Places the panel under the recorded area, above it when there is no room, or inside its
-/// bottom edge for a full-screen recording. It is excluded from screen capture anyway.
-fn open_bar(app: &AppHandle, area: Area) -> Result<(), String> {
+/// Where the panel goes for `area`: centred under it, above it when there is no room, or
+/// inside its bottom edge for a full-screen recording.
+fn bar_position(app: &AppHandle, area: Area) -> PhysicalPosition<i32> {
     let cx = area.x as f64 + area.width as f64 / 2.0;
     let cy = area.y as f64 + area.height as f64 / 2.0;
     let monitor = app.monitor_from_point(cx, cy).ok().flatten();
@@ -578,6 +597,12 @@ fn open_bar(app: &AppHandle, area: Area) -> Result<(), String> {
     } else {
         area.y as f64 + area.height as f64 - h - gap * 4.0
     };
+    PhysicalPosition::new((cx - w / 2.0) as i32, y as i32)
+}
+
+/// Places the panel under the recorded area, above it when there is no room, or inside its
+/// bottom edge for a full-screen recording. It is excluded from screen capture anyway.
+fn open_bar(app: &AppHandle, area: Area) -> Result<(), String> {
     let bar = WebviewWindowBuilder::new(app, BAR_LABEL, WebviewUrl::App("index.html".into()))
         .initialization_script("window.__SCREENCUP_RECBAR__ = true;")
         .title("Screencup recording")
@@ -590,28 +615,31 @@ fn open_bar(app: &AppHandle, area: Area) -> Result<(), String> {
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
-    let _ = bar.set_position(PhysicalPosition::new((cx - w / 2.0) as i32, y as i32));
+    let _ = bar.set_position(bar_position(app, area));
     let _ = bar.show();
     let _ = bar.set_focus();
     Ok(())
 }
 
-/// Dashed frame drawn in a thin ring just outside the area: click-through, and excluded
-/// from screen capture, so it never shows in the video.
+/// Dashed frame drawn in a ring just outside the area, excluded from screen capture so it
+/// never shows in the video. While preparing, its ring and corners resize the area and the
+/// handle in the middle moves it; the rest of the area stays click-through (on Windows, by
+/// shaping the window, see `shape_frame`). Once recording starts, `lock_frame` freezes it.
 fn open_frame(app: &AppHandle, area: Area) -> Result<(), String> {
     let scale =
         app.monitor_from_point(area.x as f64, area.y as f64).ok().flatten().map_or(1.0, |m| m.scale_factor());
     let m = (FRAME_MARGIN * scale).round() as i32;
     let frame = WebviewWindowBuilder::new(app, FRAME_LABEL, WebviewUrl::App("index.html".into()))
         .initialization_script(format!(
-            "window.__SCREENCUP_RECFRAME__ = {{ width: {}, height: {} }};",
+            "window.__SCREENCUP_RECFRAME__ = {{ width: {}, height: {}, margin: {FRAME_MARGIN}, corner: {FRAME_CORNER}, grip: {FRAME_GRIP} }};",
             area.width, area.height
         ))
         .title("Screencup area")
         .transparent(true)
         .decorations(false)
         .shadow(false)
-        .resizable(false)
+        .resizable(true)
+        .min_inner_size(2.0 * FRAME_CORNER + 16.0, 2.0 * FRAME_CORNER + 16.0)
         .always_on_top(true)
         .skip_taskbar(true)
         .focusable(false)
@@ -622,10 +650,96 @@ fn open_frame(app: &AppHandle, area: Area) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let _ = frame.set_position(PhysicalPosition::new(area.x - m, area.y - m));
     let _ = frame.set_size(PhysicalSize::new(area.width + 2 * m as u32, area.height + 2 * m as u32));
-    let _ = frame.set_ignore_cursor_events(true);
+    shape_frame(&frame, true);
+    let handle = app.clone();
+    frame.on_window_event(move |event| {
+        let resized = matches!(event, tauri::WindowEvent::Resized(_));
+        if !(resized || matches!(event, tauri::WindowEvent::Moved(_))) || !is_prepared(&handle) {
+            return;
+        }
+        let Some(frame) = handle.get_webview_window(FRAME_LABEL) else { return };
+        if resized {
+            shape_frame(&frame, true);
+        }
+        if let Some(bar) = handle.get_webview_window(BAR_LABEL) {
+            let _ = bar.set_position(bar_position(&handle, frame_area(&frame)));
+        }
+    });
     let _ = frame.show();
     Ok(())
 }
+
+/// The screen area inside the frame window's ring, in physical pixels.
+fn frame_area(frame: &tauri::WebviewWindow) -> Area {
+    let m = (FRAME_MARGIN * frame.scale_factor().unwrap_or(1.0)).round() as i32;
+    let pos = frame.outer_position().unwrap_or_default();
+    let size = frame.outer_size().unwrap_or_default();
+    Area {
+        x: pos.x + m,
+        y: pos.y + m,
+        width: (size.width as i32 - 2 * m).max(0) as u32,
+        height: (size.height as i32 - 2 * m).max(0) as u32,
+    }
+}
+
+/// yuv420p H.264 needs even dimensions.
+fn even_area(a: Area) -> Area {
+    Area { width: a.width & !1, height: a.height & !1, ..a }
+}
+
+/// Recording started: the frame snaps to the recorded (even-sized) area and stops reacting.
+fn lock_frame(frame: &tauri::WebviewWindow, area: Area) {
+    let m = (FRAME_MARGIN * frame.scale_factor().unwrap_or(1.0)).round() as i32;
+    let _ = frame.set_resizable(false);
+    let _ = frame.set_size(PhysicalSize::new(area.width + 2 * m as u32, area.height + 2 * m as u32));
+    let _ = frame.set_ignore_cursor_events(true);
+    shape_frame(frame, false);
+}
+
+/// Limits the frame window to the ring, the corner handles and (while `editable`) the move
+/// handle, so clicks inside the area reach the windows below.
+#[cfg(windows)]
+fn shape_frame(frame: &tauri::WebviewWindow, editable: bool) {
+    use windows_sys::Win32::Graphics::Gdi::{
+        CombineRgn, CreateEllipticRgn, CreateRectRgn, DeleteObject, RGN_DIFF, RGN_OR, SetWindowRgn,
+    };
+    let Ok(hwnd) = frame.hwnd() else { return };
+    let scale = frame.scale_factor().unwrap_or(1.0);
+    let size = frame.outer_size().unwrap_or_default();
+    let (w, h) = (size.width as i32, size.height as i32);
+    let m = (FRAME_MARGIN * scale).round() as i32;
+    let c = (FRAME_CORNER * scale).round() as i32;
+    let g = (FRAME_GRIP * scale).round() as i32;
+    let (lw, lh) = ((FRAME_LABEL_BOX.0 * scale).round() as i32, (FRAME_LABEL_BOX.1 * scale).round() as i32);
+    // SAFETY: plain GDI region calls on regions created here; SetWindowRgn takes ownership of
+    // `shape`, every other region is deleted.
+    unsafe {
+        let shape = CreateRectRgn(0, 0, w, h);
+        let parts = [
+            (CreateRectRgn(m, m, w - m, h - m), RGN_DIFF),
+            (CreateRectRgn(0, 0, c, c), RGN_OR),
+            (CreateRectRgn(w - c, 0, w, c), RGN_OR),
+            (CreateRectRgn(0, h - c, c, h), RGN_OR),
+            (CreateRectRgn(w - c, h - c, w, h), RGN_OR),
+            (CreateRectRgn(w - m - lw, m, w - m, m + lh), RGN_OR),
+        ];
+        for (part, mode) in parts {
+            CombineRgn(shape, shape, part, mode);
+            DeleteObject(part);
+        }
+        if editable {
+            let (cx, cy) = (w / 2, h / 2);
+            let grip = CreateEllipticRgn(cx - g / 2, cy - g / 2, cx + g / 2 + 1, cy + g / 2 + 1);
+            CombineRgn(shape, shape, grip, RGN_OR);
+            DeleteObject(grip);
+        }
+        SetWindowRgn(hwnd.0 as _, shape, 1);
+    }
+}
+
+/// Elsewhere the whole frame window takes the mouse while preparing.
+#[cfg(not(windows))]
+fn shape_frame(_frame: &tauri::WebviewWindow, _editable: bool) {}
 
 fn close_windows(app: &AppHandle) {
     for label in [BAR_LABEL, FRAME_LABEL] {

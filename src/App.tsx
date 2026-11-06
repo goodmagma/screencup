@@ -12,7 +12,7 @@ declare global {
     /** Set by `open_bar` in src-tauri/src/recorder.rs on the recording control bar. */
     __SCREENCUP_RECBAR__?: boolean;
     /** Set by `open_frame` in src-tauri/src/recorder.rs on the dashed area frame. */
-    __SCREENCUP_RECFRAME__?: { width: number; height: number };
+    __SCREENCUP_RECFRAME__?: import("./RecBar").FrameProps;
     /** Set by `settings::show` in src-tauri/src/settings.rs on the settings window. */
     __SCREENCUP_SETTINGS__?: boolean;
     /** Set by `ClickFx::start` in src-tauri/src/clickfx.rs on the click highlight window. */

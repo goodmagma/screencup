@@ -706,20 +706,68 @@ button.size.active {
 .recframe {
   position: fixed;
   inset: 0;
+}
+
+/* Dashed line just outside the recorded area, in the ring (--m) around it. */
+.recframe-line {
+  position: absolute;
+  inset: calc(var(--m) - 3px);
   border: 2px dashed rgb(255 255 255 / 90%);
   outline: 1px solid rgb(0 0 0 / 45%);
   outline-offset: -3px;
+  pointer-events: none;
+}
+
+.recframe:not(.recording) .recframe-line {
+  border-color: #e5484d;
+}
+
+.recframe-edge {
+  position: absolute;
+}
+
+.recframe-corner {
+  position: absolute;
+  width: var(--c);
+  height: var(--c);
+}
+
+/* Visible handle: a square on the area corner, inside the grip zone. */
+.recframe-corner::after {
+  content: "";
+  position: absolute;
+  inset: calc(var(--m) - 5px);
+  background: #fff;
+  border: 2px solid #e5484d;
+  border-radius: 2px;
+}
+
+.recframe-grip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--g);
+  height: var(--g);
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(229 72 77 / 85%);
+  border: 2px solid #fff;
+  color: #fff;
+  cursor: move;
 }
 
 .recframe-size {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: calc(var(--m) + 4px);
+  right: calc(var(--m) + 4px);
   padding: 1px 6px;
   border-radius: 3px;
   background: rgb(0 0 0 / 60%);
   color: #fff;
   font-size: 11px;
+  pointer-events: none;
 }
 
 /* --- settings window -------------------------------------------------------------------- */
