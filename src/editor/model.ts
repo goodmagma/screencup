@@ -80,14 +80,14 @@ export const TOOLS: { tool: Tool; key: string }[] = [
   { tool: "select", key: "v" },
   { tool: "arrow", key: "a" },
   { tool: "line", key: "l" },
-  { tool: "pen", key: "p" },
   { tool: "rect", key: "r" },
+  { tool: "text", key: "t" },
   { tool: "ellipse", key: "e" },
+  { tool: "step", key: "n" },
   { tool: "highlight", key: "h" },
+  { tool: "pen", key: "p" },
   { tool: "blur", key: "b" },
   { tool: "magnify", key: "m" },
-  { tool: "text", key: "t" },
-  { tool: "step", key: "n" },
   { tool: "crop", key: "c" },
 ];
 
