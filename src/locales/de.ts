@@ -196,4 +196,6 @@ export const de: Record<Key, string> = {
   "video.failed": "Verarbeitung fehlgeschlagen: {error}",
   "video.gifWorking": "GIF wird erstellt…",
   "video.gifHint": "Länge {length}. Lange oder große GIFs werden schwer.",
+  "rec.webcam": "Webcam",
+  "webcam.unavailable": "Webcam nicht verfügbar",
 };

@@ -1386,3 +1386,40 @@ html.clickfx body {
   border-radius: 4px;
   font: inherit;
 }
+
+/* --- webcam overlay ------------------------------------------------------------------------ */
+
+.webcam {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  clip-path: circle(50%);
+  background: #1c1f24;
+  cursor: move;
+}
+
+/* Mirrored, like a mirror: what people expect from their own camera. */
+.webcam video {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  clip-path: circle(50%);
+  object-fit: cover;
+  transform: scaleX(-1);
+  pointer-events: none;
+}
+
+.webcam-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  padding: 12px;
+  color: #aaa;
+  font-size: 12px;
+  text-align: center;
+}

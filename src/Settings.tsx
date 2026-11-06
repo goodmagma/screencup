@@ -12,6 +12,7 @@ export interface SettingsData {
   record_microphone: boolean;
   record_system_audio: boolean;
   show_clicks: boolean;
+  record_webcam: boolean;
   framerate: number;
   hotkeys: Hotkeys;
   /** 0 = no limit. */

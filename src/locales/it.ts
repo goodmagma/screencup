@@ -201,6 +201,8 @@ export const it = {
   "video.failed": "Elaborazione non riuscita: {error}",
   "video.gifWorking": "Creazione della GIF…",
   "video.gifHint": "Tratto di {length}. Le GIF lunghe o grandi diventano pesanti.",
+  "rec.webcam": "Webcam",
+  "webcam.unavailable": "Webcam non disponibile",
 };
 
 export type Key = keyof typeof it;

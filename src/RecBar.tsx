@@ -2,7 +2,7 @@ import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode,
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Crop, Mic, MicOff, MousePointerClick, Move, Pause, Play, Settings, Volume2, VolumeX, X } from "lucide-react";
+import { Crop, Mic, MicOff, MousePointerClick, Move, Pause, Play, Settings, Video, VideoOff, Volume2, VolumeX, X } from "lucide-react";
 import { patchSettings, type SettingsData } from "./Settings";
 import { t } from "./i18n";
 
@@ -123,6 +123,12 @@ export function RecBar() {
         label={t("rec.clicks")}
         on={settings?.show_clicks}
         onClick={() => toggle({ show_clicks: !settings?.show_clicks })}
+      />
+      <Toggle
+        icon={settings?.record_webcam ? <Video size={20} /> : <VideoOff size={20} />}
+        label={t("rec.webcam")}
+        on={settings?.record_webcam}
+        onClick={() => invoke("toggle_webcam")}
       />
       <Toggle icon={<Crop size={20} />} label={t("rec.reselect")} onClick={() => invoke("reselect_region")} />
       <Toggle icon={<Settings size={20} />} label={t("common.settings")} onClick={() => invoke("open_settings")} />

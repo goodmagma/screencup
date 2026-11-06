@@ -7,6 +7,7 @@ import { RecBar, RecFrame } from "./RecBar";
 import { SettingsWindow } from "./Settings";
 import { AboutWindow } from "./About";
 import { VideoEditorWindow } from "./VideoEditor";
+import { Webcam } from "./Webcam";
 import { t } from "./i18n";
 
 declare global {
@@ -25,6 +26,8 @@ declare global {
     __SCREENCUP_ABOUT__?: boolean;
     /** Set by `open_video_editor` in src-tauri/src/video.rs: the recording being edited. */
     __SCREENCUP_VIDEO__?: string;
+    /** Set by `webcam::open` in src-tauri/src/webcam.rs on the webcam overlay. */
+    __SCREENCUP_WEBCAM__?: boolean;
   }
 }
 
@@ -36,6 +39,7 @@ export function App() {
   if (recbar) return <RecBar />;
   if (window.__SCREENCUP_RECFRAME__) return <RecFrame {...window.__SCREENCUP_RECFRAME__} />;
   if (window.__SCREENCUP_CLICKFX__) return <ClickFx />;
+  if (window.__SCREENCUP_WEBCAM__) return <Webcam />;
   return <MainWindow />;
 }
 

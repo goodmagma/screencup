@@ -25,6 +25,8 @@ pub struct Settings {
     pub record_system_audio: bool,
     /// Draw a ripple where the mouse is clicked in screen recordings.
     pub show_clicks: bool,
+    /// Show the webcam overlay over the area while recording (see `webcam`).
+    pub record_webcam: bool,
     pub framerate: u32,
     pub hotkeys: Hotkeys,
     /// Keep at most this many captures; older ones go to the trash. 0 = no limit.
@@ -59,6 +61,7 @@ impl Default for Settings {
             record_microphone: false,
             record_system_audio: false,
             show_clicks: true,
+            record_webcam: false,
             framerate: 30,
             hotkeys: Hotkeys::default(),
             max_captures: 0,

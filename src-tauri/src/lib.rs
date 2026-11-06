@@ -18,6 +18,7 @@ mod settings;
 mod share;
 mod updater;
 mod video;
+mod webcam;
 
 use capture::CaptureKind;
 use recorder::RecordKind;
@@ -144,6 +145,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
+            webcam::toggle_webcam,
             video::video_source,
             video::open_video_editor,
             video::trim_video,

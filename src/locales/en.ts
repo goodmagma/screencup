@@ -196,5 +196,7 @@ export const en: Record<Key, string> = {
   "video.failed": "Processing failed: {error}",
   "video.gifWorking": "Creating the GIF…",
   "video.gifHint": "{length} long. Long or large GIFs get heavy.",
+  "rec.webcam": "Webcam",
+  "webcam.unavailable": "Webcam unavailable",
 };
 

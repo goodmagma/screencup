@@ -45,7 +45,7 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 const STARTUP_CHECK: Duration = Duration::from_millis(400);
 const BAR_LABEL: &str = "recbar";
 /// Control panel size in logical pixels; keep in sync with `.recbar` in src/styles.css.
-const BAR_SIZE: (f64, f64) = (480.0, 76.0);
+const BAR_SIZE: (f64, f64) = (560.0, 76.0);
 const BAR_GAP: f64 = 12.0;
 const FRAME_LABEL: &str = "recframe";
 /// Width of the ring around the area where the dashed frame is drawn, in logical pixels:
@@ -209,7 +209,22 @@ fn prepare(app: &AppHandle, kind: RecordKind) -> Result<(), String> {
     *app.state::<Recorder>().prepared.lock().map_err(|e| e.to_string())? = Some(area);
     open_frame(app, area)?;
     open_bar(app, area)?;
+    if settings::load(app).record_webcam
+        && let Err(e) = crate::webcam::open(app, area)
+    {
+        eprintln!("webcam overlay: {e}");
+    }
     Ok(())
+}
+
+/// The area being prepared or recorded, for windows placed over it.
+pub fn current_area(app: &AppHandle) -> Option<Area> {
+    if let Some(frame) = app.get_webview_window(FRAME_LABEL) {
+        return Some(frame_area(&frame));
+    }
+    let state = app.state::<Recorder>();
+    let prepared = *state.prepared.lock().ok()?;
+    prepared.or_else(|| state.running.lock().ok()?.as_ref().map(|r| r.area))
 }
 
 fn begin_reporting(app: &AppHandle) {
@@ -903,7 +918,7 @@ fn shape_frame(frame: &tauri::WebviewWindow, editable: bool) {
 fn shape_frame(_frame: &tauri::WebviewWindow, _editable: bool) {}
 
 fn close_windows(app: &AppHandle) {
-    for label in [BAR_LABEL, FRAME_LABEL] {
+    for label in [BAR_LABEL, FRAME_LABEL, crate::webcam::LABEL] {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.destroy();
         }
