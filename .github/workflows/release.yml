@@ -1,0 +1,65 @@
+# Builds the Windows installer and publishes it as a GitHub Release.
+# Runs when a version tag is pushed (`git tag v0.1.0 && git push origin v0.1.0`), or by hand
+# from the Actions tab for an existing tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  # Bundled with the app for screen recording (GPL build, see THIRD-PARTY-NOTICES.md).
+  FFMPEG_VERSION: "9.0.1"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Download ffmpeg
+        shell: pwsh
+        run: |
+          $name = "ffmpeg-$env:FFMPEG_VERSION-essentials_build"
+          $zip = "$env:RUNNER_TEMP\ffmpeg.zip"
+          Invoke-WebRequest "https://github.com/GyanD/codexffmpeg/releases/download/$env:FFMPEG_VERSION/$name.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\ffmpeg"
+          # prepare-sidecars.mjs also picks up LICENSE and README.txt from the folder above bin/.
+          "SCREENCUP_FFMPEG=$env:RUNNER_TEMP\ffmpeg\$name\bin\ffmpeg.exe" >> $env:GITHUB_ENV
+
+      - run: npm ci
+
+      # beforeBuildCommand builds the overlay, copies ffmpeg and collects the licences.
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ env.TAG }}
+          releaseName: Screencup ${{ env.TAG }}
+          releaseBody: |
+            Windows installer: download `Screencup_*_x64-setup.exe` below and run it. No administrator rights needed.
+
+            Windows SmartScreen may warn that the app is not recognised, because the installer is not signed yet. Choose "More info", then "Run anyway".
+          releaseDraft: false
+          prerelease: true

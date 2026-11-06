@@ -67,8 +67,13 @@ background may already own PrintScreen.
 
 ## Install
 
-Build the Windows installer from source (see below). It installs per user and needs no
-administrator rights.
+Download `Screencup_<version>_x64-setup.exe` from the
+[Releases](https://github.com/goodmagma/screencup/releases) page and run it. It installs per
+user and needs no administrator rights. The installer is not signed yet, so Windows
+SmartScreen may ask for confirmation ("More info", then "Run anyway").
+
+Releases are built by GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml))
+when a `v*` tag is pushed.
 
 ## Build from source
 
