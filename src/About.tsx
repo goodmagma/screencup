@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ExternalLink, FileText } from "lucide-react";
+import { Download, ExternalLink, FileText, RefreshCw } from "lucide-react";
 import { t } from "./i18n";
 
 /** Mirrors `AboutInfo` in src-tauri/src/about.rs. */
@@ -19,6 +19,24 @@ export function AboutWindow({ notify }: { notify: (message: string) => void }) {
 
   const run = (command: string) => invoke(command).catch((e) => notify(String(e)));
 
+  /** Result of "Check for updates": null before, "none" when up to date. */
+  const [found, setFound] = useState<{ version: string } | "none" | "checking" | null>(null);
+  const check = () => {
+    setFound("checking");
+    invoke<{ version: string } | null>("check_update")
+      .then((u) => setFound(u ?? "none"))
+      .catch((e) => {
+        // Usually no network, or no release info published yet: the raw text is technical.
+        console.warn("update check:", e);
+        setFound(null);
+        notify(t("update.unreachable"));
+      });
+  };
+  const install = () => {
+    notify(t("update.downloading"));
+    invoke("install_update").catch((e) => notify(t("update.failed", { error: String(e) })));
+  };
+
   return (
     <div className="about">
       <img src="/app-icon.svg" alt="" className="about-icon" />
@@ -34,6 +52,20 @@ export function AboutWindow({ notify }: { notify: (message: string) => void }) {
           <FileText size={16} />
           <span>{t("about.licenses")}</span>
         </button>
+      </div>
+      <div className="about-update">
+        {found && typeof found === "object" ? (
+          <button onClick={install}>
+            <Download size={16} />
+            <span>{t("update.installVersion", { version: found.version })}</span>
+          </button>
+        ) : (
+          <button className="ghost" onClick={check} disabled={found === "checking"}>
+            <RefreshCw size={16} />
+            <span>{found === "checking" ? t("update.checking") : t("update.check")}</span>
+          </button>
+        )}
+        {found === "none" && <p className="about-version">{t("update.upToDate")}</p>}
       </div>
       <p className="about-legal">
         © 2026 goodmagma · {t("about.license")}

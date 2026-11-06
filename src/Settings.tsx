@@ -22,6 +22,7 @@ export interface SettingsData {
   share_service: "litterbox" | "catbox";
   share_expiry_hours: number;
   share_confirmed: boolean;
+  check_updates: boolean;
 }
 
 /**
@@ -264,6 +265,11 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
           label={t("settings.autostart")}
           checked={autostart}
           onChange={toggleAutostart}
+        />
+        <Check
+          label={t("settings.checkUpdates")}
+          checked={settings.check_updates}
+          onChange={(v) => update({ check_updates: v })}
         />
         <Check
           label={t("settings.copyAfterCapture")}

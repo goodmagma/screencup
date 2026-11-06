@@ -1034,3 +1034,74 @@ html.clickfx body {
 .share-modal .setting-check {
   margin-bottom: 14px;
 }
+
+/* --- updates ------------------------------------------------------------------------------ */
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: #1f3d63;
+  color: #fff;
+  font-size: 13px;
+}
+
+.update-banner span {
+  flex: 1;
+}
+
+.about-update {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.about-update button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- editor: resize dialog and status bar -------------------------------------------------- */
+
+.resize-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 280px;
+}
+
+.resize-modal h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.resize-modal label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resize-modal input {
+  width: 110px;
+  padding: 4px 8px;
+  background: var(--chrome-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.resize-modal .modal-buttons {
+  margin-top: 6px;
+}
+
+.statusbar .size-button {
+  background: transparent;
+  color: inherit;
+  text-decoration: underline dotted;
+}

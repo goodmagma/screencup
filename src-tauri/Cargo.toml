@@ -16,6 +16,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 cpal = "0.18.2"
 drag = "2.1.1"
 hound = "3.5.1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 percent-encoding = "2.3.2"
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "multipart", "http2", "system-proxy", "stream"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -27,6 +28,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
 trash = "5.3.0"
 xcap = "0.9"
 

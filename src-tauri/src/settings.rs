@@ -37,6 +37,8 @@ pub struct Settings {
     pub share_expiry_hours: u32,
     /// The user accepted that shared links are public; the gallery stops asking.
     pub share_confirmed: bool,
+    /// Look for a new version on GitHub at start and every few hours.
+    pub check_updates: bool,
 }
 
 /// Global shortcuts as accelerator strings (e.g. `Control+Shift+PrintScreen`); empty = none.
@@ -66,6 +68,7 @@ impl Default for Settings {
             share_service: "litterbox".into(),
             share_expiry_hours: 24,
             share_confirmed: false,
+            check_updates: true,
         }
     }
 }

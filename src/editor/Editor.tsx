@@ -7,12 +7,15 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Circle as CircleIcon,
   Copy,
+  Crop as CropIcon,
+  FileDown,
   Grid3x3,
   Highlighter,
   LogOut,
   Minus,
   MousePointer2,
   MoveUpRight,
+  Pencil,
   Plus,
   Redo2,
   Save,
@@ -22,6 +25,7 @@ import {
   Type,
   Undo2,
   X,
+  ZoomIn,
 } from "lucide-react";
 import { Arrow, Circle, Ellipse, Group, Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
 import { RibbonButton } from "../ui";
@@ -29,8 +33,12 @@ import {
   type Annotations,
   type BoxShape,
   COLORS,
+  type Crop,
+  type Doc,
   type History,
   type LineShape,
+  MAGNIFY_ZOOM,
+  type PenShape,
   SIZES,
   type Shape,
   TOOLS,
@@ -39,6 +47,7 @@ import {
   fontSize,
   historyOf,
   isBox,
+  isCentred,
   isMeaningful,
   normalizeBox,
   pixelate,
@@ -82,13 +91,19 @@ const TOOL_ICONS: Record<Tool, ReactNode> = {
   select: <MousePointer2 size={20} />,
   arrow: <MoveUpRight size={20} />,
   line: <Slash size={20} />,
+  pen: <Pencil size={20} />,
   rect: <Square size={20} />,
   ellipse: <CircleIcon size={20} />,
   highlight: <Highlighter size={20} />,
   blur: <Grid3x3 size={20} />,
+  magnify: <ZoomIn size={20} />,
   text: <Type size={20} />,
   step: <StepIcon />,
+  crop: <CropIcon size={20} />,
 };
+
+/** Smallest crop kept, in image pixels; a stray click crops nothing. */
+const MIN_CROP = 8;
 
 const win = getCurrentWindow();
 
@@ -105,8 +120,8 @@ interface Props {
 
 export function Editor({ name, onClose, notify }: Props) {
   const [img, setImg] = useState<HTMLImageElement | null>(null);
-  const [history, setHistory] = useState<History>(historyOf([]));
-  const [saved, setSaved] = useState<Shape[]>([]);
+  const [history, setHistory] = useState<History>(historyOf({ shapes: [] }));
+  const [saved, setSaved] = useState<Doc | null>(null);
   /** Shapes shown while an endpoint handle is dragged, before the change is committed. */
   const [preview, setPreview] = useState<Shape[] | null>(null);
   const [draft, setDraftState] = useState<Shape | null>(null);
@@ -121,6 +136,10 @@ export function Editor({ name, onClose, notify }: Props) {
   const [view, setView] = useState({ w: 800, h: 600 });
   const [busy, setBusy] = useState(false);
   const [askClose, setAskClose] = useState(false);
+  /** Area being dragged with the crop tool, in image pixels. */
+  const [cropDraft, setCropDraftState] = useState<Crop | null>(null);
+  const cropDraftRef = useRef<Crop | null>(null);
+  const [resizeOpen, setResizeOpen] = useState(false);
 
   const viewRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -128,15 +147,23 @@ export function Editor({ name, onClose, notify }: Props) {
   const uiRef = useRef<Konva.Layer>(null);
   const trRef = useRef<Konva.Transformer>(null);
 
-  const shapes = history.stack[history.index];
+  const doc = history.stack[history.index];
+  const shapes = doc.shapes;
   const shown = preview ?? shapes;
-  const dirty = shapes !== saved;
+  const dirty = saved !== null && doc !== saved;
+  /** Visible part of the image and output scale, from the document. */
+  const crop: Crop = doc.crop ?? { x: 0, y: 0, w: img?.width ?? 1, h: img?.height ?? 1 };
+  const outScale = doc.scale ?? 1;
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
 
   const setDraft = (s: Shape | null) => {
     draftRef.current = s;
     setDraftState(s);
+  };
+  const setCropDraft = (c: Crop | null) => {
+    cropDraftRef.current = c;
+    setCropDraftState(c);
   };
 
   // Load the source pixels (the original when edited before) and saved annotations.
@@ -156,7 +183,8 @@ export function Editor({ name, onClose, notify }: Props) {
       image.src = url;
       await image.decode();
       if (cancelled) return;
-      const loaded = json ? (JSON.parse(json) as Annotations).shapes : [];
+      const parsed: Annotations | null = json ? JSON.parse(json) : null;
+      const loaded: Doc = { shapes: parsed?.shapes ?? [], crop: parsed?.crop, scale: parsed?.scale };
       setImg(image);
       setHistory(historyOf(loaded));
       setSaved(loaded);
@@ -194,15 +222,20 @@ export function Editor({ name, onClose, notify }: Props) {
   const zoom = !img
     ? 1
     : fit
-      ? Math.min(1, (view.w - VIEW_PADDING) / img.width, (view.h - VIEW_PADDING) / img.height)
+      ? Math.min(1, (view.w - VIEW_PADDING) / crop.w, (view.h - VIEW_PADDING) / crop.h)
       : manualZoom;
 
-  const commit = useCallback((next: Shape[]) => setHistory((h) => push(h, next)), []);
+  const commit = useCallback(
+    (next: Shape[]) => setHistory((h) => push(h, { ...h.stack[h.index], shapes: next })),
+    [],
+  );
+  /** Changes crop or output scale, as one undo step. */
+  const commitDoc = (patch: Partial<Doc>) => setHistory((h) => push(h, { ...h.stack[h.index], ...patch }));
   const update = (id: string, f: (s: Shape) => Shape) => commit(shapes.map((s) => (s.id === id ? f(s) : s)));
 
   const pointer = () => {
     const p = stageRef.current!.getPointerPosition()!;
-    return { x: p.x / zoom, y: p.y / zoom };
+    return { x: p.x / zoom + crop.x, y: p.y / zoom + crop.y };
   };
 
   const setCursor = (cursor: string) => {
@@ -226,6 +259,12 @@ export function Editor({ name, onClose, notify }: Props) {
     const { x, y } = pointer();
     const base = { id: crypto.randomUUID(), color, width: strokeWidth };
     switch (tool) {
+      case "crop":
+        setCropDraft({ x, y, w: 0, h: 0 });
+        break;
+      case "pen":
+        setDraft({ ...base, kind: "pen", points: [x, y] });
+        break;
       case "arrow":
       case "line":
         setDraft({ ...base, kind: tool, points: [x, y, x, y] });
@@ -234,6 +273,7 @@ export function Editor({ name, onClose, notify }: Props) {
       case "ellipse":
       case "highlight":
       case "blur":
+      case "magnify":
         setDraft({ ...base, kind: tool, x, y, w: 0, h: 0 });
         break;
       case "text":
@@ -249,10 +289,21 @@ export function Editor({ name, onClose, notify }: Props) {
   };
 
   const onStageMove = (e: KonvaEventObject<MouseEvent>) => {
+    const c = cropDraftRef.current;
+    if (c) {
+      const { x, y } = pointer();
+      setCropDraft({ ...c, w: x - c.x, h: y - c.y });
+      return;
+    }
     const d = draftRef.current;
     if (!d) return;
     const { x, y } = pointer();
     if (d.kind === "arrow" || d.kind === "line") setDraft({ ...d, points: [d.points[0], d.points[1], x, y] });
+    else if (d.kind === "pen") {
+      // Skip points closer than a screen pixel or two: smoother line, smaller document.
+      const [lx, ly] = d.points.slice(-2);
+      if (Math.hypot(x - lx, y - ly) >= 2 / zoom) setDraft({ ...d, points: [...d.points, x, y] });
+    }
     else if (isBox(d)) {
       let w = x - d.x;
       let h = y - d.y;
@@ -268,13 +319,29 @@ export function Editor({ name, onClose, notify }: Props) {
 
   // Released anywhere, even outside the canvas. The new shape is selected right away.
   const finishDraft = useCallback(() => {
+    const c = cropDraftRef.current;
+    if (c && img) {
+      setCropDraft(null);
+      const n = normalizeBox(c);
+      // Clamp to the image; the crop is made on the source, whatever was cropped before.
+      const x = Math.max(0, Math.round(n.x));
+      const y = Math.max(0, Math.round(n.y));
+      const w = Math.min(img.width, Math.round(n.x + n.w)) - x;
+      const h = Math.min(img.height, Math.round(n.y + n.h)) - y;
+      if (w >= MIN_CROP && h >= MIN_CROP) {
+        setHistory((hist) => push(hist, { ...hist.stack[hist.index], crop: { x, y, w, h } }));
+        setFit(true);
+        setTool("select");
+      }
+      return;
+    }
     const d = draftRef.current;
     if (!d) return;
     setDraft(null);
     if (!isMeaningful(d)) return;
     commit([...shapes, isBox(d) ? normalizeBox(d) : d]);
     setSelectedId(d.id);
-  }, [commit, shapes]);
+  }, [commit, shapes, img]);
 
   useEffect(() => {
     window.addEventListener("mouseup", finishDraft);
@@ -318,7 +385,14 @@ export function Editor({ name, onClose, notify }: Props) {
       n.position({ x: 0, y: 0 });
       const [x1, y1, x2, y2] = s.points;
       update(s.id, (sh) => ({ ...(sh as LineShape), points: [x1 + dx, y1 + dy, x2 + dx, y2 + dy] }));
-    } else if (s.kind === "ellipse") {
+    } else if (s.kind === "pen") {
+      const [dx, dy] = [n.x(), n.y()];
+      n.position({ x: 0, y: 0 });
+      update(s.id, (sh) => ({
+        ...(sh as PenShape),
+        points: s.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
+      }));
+    } else if (isCentred(s)) {
       update(s.id, (sh) => ({ ...sh, x: n.x() - s.w / 2, y: n.y() - s.h / 2 }));
     } else {
       update(s.id, (sh) => ({ ...sh, x: n.x(), y: n.y() }));
@@ -335,7 +409,7 @@ export function Editor({ name, onClose, notify }: Props) {
     }
     const [w, h] = [s.w * n.scaleX(), s.h * n.scaleY()];
     n.scale({ x: 1, y: 1 });
-    const [x, y] = s.kind === "ellipse" ? [n.x() - w / 2, n.y() - h / 2] : [n.x(), n.y()];
+    const [x, y] = isCentred(s) ? [n.x() - w / 2, n.y() - h / 2] : [n.x(), n.y()];
     update(s.id, (sh) => ({ ...sh, x, y, w, h, rotation }));
   };
 
@@ -399,6 +473,48 @@ export function Editor({ name, onClose, notify }: Props) {
             hitStrokeWidth={hit}
           />
         );
+      case "pen":
+        return (
+          <Line
+            key={s.id}
+            {...handlers}
+            points={s.points}
+            stroke={s.color}
+            strokeWidth={s.width}
+            tension={0.4}
+            lineCap="round"
+            lineJoin="round"
+            hitStrokeWidth={hit}
+          />
+        );
+      case "magnify": {
+        // The fill pattern is the image scaled by MAGNIFY_ZOOM, offset so the centre of the
+        // ellipse shows the image point under that centre.
+        const cx = s.x + s.w / 2;
+        const cy = s.y + s.h / 2;
+        return (
+          <Ellipse
+            key={s.id}
+            {...handlers}
+            onTransformEnd={onTransformEnd(s)}
+            x={cx}
+            y={cy}
+            radiusX={Math.abs(s.w) / 2}
+            radiusY={Math.abs(s.h) / 2}
+            fillPatternImage={img ?? undefined}
+            fillPatternScaleX={MAGNIFY_ZOOM}
+            fillPatternScaleY={MAGNIFY_ZOOM}
+            fillPatternOffsetX={cx}
+            fillPatternOffsetY={cy}
+            fillPatternRepeat="no-repeat"
+            stroke={s.color}
+            strokeWidth={s.width}
+            shadowColor="#000000"
+            shadowBlur={s.width * 2}
+            shadowOpacity={0.35}
+          />
+        );
+      }
       case "rect":
         return (
           <Rect
@@ -539,6 +655,21 @@ export function Editor({ name, onClose, notify }: Props) {
     ));
   };
 
+  /** Dims everything outside the area being cropped, with a dashed border around it. */
+  const cropShade = (c: Crop) => {
+    const full = { x: crop.x, y: crop.y, w: crop.w, h: crop.h };
+    const shade = "rgba(0, 0, 0, 0.55)";
+    return (
+      <Group listening={false}>
+        <Rect x={full.x} y={full.y} width={full.w} height={c.y - full.y} fill={shade} />
+        <Rect x={full.x} y={c.y + c.h} width={full.w} height={full.y + full.h - c.y - c.h} fill={shade} />
+        <Rect x={full.x} y={c.y} width={c.x - full.x} height={c.h} fill={shade} />
+        <Rect x={c.x + c.w} y={c.y} width={full.x + full.w - c.x - c.w} height={c.h} fill={shade} />
+        <Rect x={c.x} y={c.y} width={c.w} height={c.h} stroke="#ffffff" strokeWidth={1.5 / zoom} dash={[6 / zoom, 4 / zoom]} />
+      </Group>
+    );
+  };
+
   // --- save / export -------------------------------------------------------------------
 
   /** Renders the content layer at 1:1 image pixels, without selection handles. */
@@ -547,14 +678,18 @@ export function Editor({ name, onClose, notify }: Props) {
     const content = contentRef.current!;
     const ui = uiRef.current!;
     const size = stage.size();
+    const position = content.position();
     ui.visible(false);
     content.scale({ x: 1, y: 1 });
-    stage.size({ width: img!.width, height: img!.height });
+    content.position({ x: -crop.x, y: -crop.y });
+    stage.size({ width: crop.w, height: crop.h });
     let canvas: HTMLCanvasElement;
     try {
-      canvas = content.toCanvas({ x: 0, y: 0, width: img!.width, height: img!.height, pixelRatio: 1 });
+      // pixelRatio resizes the output (smoothly) to the chosen scale.
+      canvas = content.toCanvas({ x: 0, y: 0, width: crop.w, height: crop.h, pixelRatio: outScale });
     } finally {
       stage.size(size);
+      content.position(position);
       content.scale({ x: zoom, y: zoom });
       ui.visible(true);
       stage.batchDraw();
@@ -570,10 +705,10 @@ export function Editor({ name, onClose, notify }: Props) {
     setBusy(true);
     try {
       const png = await exportPng();
-      const doc: Annotations = { version: 1, shapes };
-      await invoke("save_annotations", { name, json: JSON.stringify(doc) });
+      const stored: Annotations = { version: 1, shapes, crop: doc.crop, scale: doc.scale };
+      await invoke("save_annotations", { name, json: JSON.stringify(stored) });
       await invoke("save_edit_image", png, { headers: { "x-name": encodeURIComponent(name) } });
-      setSaved(shapes);
+      setSaved(doc);
       return true;
     } catch (e) {
       notify(String(e));
@@ -605,6 +740,17 @@ export function Editor({ name, onClose, notify }: Props) {
 
   const requestClose = () => (dirty ? setAskClose(true) : onClose());
 
+  /** Saves, then writes a copy as PNG, JPG or PDF where the user picks. */
+  const saveAs = async () => {
+    if (!(await save())) return;
+    try {
+      const path = await invoke<string | null>("export_capture", { name });
+      if (path) notify(tr("editor.exported", { path }));
+    } catch (e) {
+      notify(String(e));
+    }
+  };
+
   // --- keyboard ------------------------------------------------------------------------
 
   const undo = () => setHistory((h) => ({ ...h, index: Math.max(0, h.index - 1) }));
@@ -612,7 +758,8 @@ export function Editor({ name, onClose, notify }: Props) {
 
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
-    if (textEdit || askClose || e.target instanceof HTMLTextAreaElement) return;
+    if (textEdit || askClose || resizeOpen || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement)
+      return;
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
     if (mod && key === "z") (e.shiftKey ? redo : undo)();
@@ -674,6 +821,14 @@ export function Editor({ name, onClose, notify }: Props) {
           onClick={saveAndClose}
           disabled={busy}
           title={tr("editor.saveHint")}
+        />
+        <RibbonButton
+          icon={<FileDown size={20} />}
+          tint="#2d8cff"
+          label={tr("editor.saveAs")}
+          onClick={saveAs}
+          disabled={busy}
+          title={tr("editor.saveAsHint")}
         />
         <RibbonButton
           icon={<Copy size={20} />}
@@ -760,24 +915,25 @@ export function Editor({ name, onClose, notify }: Props) {
           {img && (
             <div
               className={`stage ${tool === "select" ? "" : tool === "text" ? "typing" : "drawing"}`}
-              style={{ width: img.width * zoom, height: img.height * zoom }}
+              style={{ width: crop.w * zoom, height: crop.h * zoom }}
             >
               <Stage
                 ref={stageRef}
-                width={img.width * zoom}
-                height={img.height * zoom}
+                width={crop.w * zoom}
+                height={crop.h * zoom}
                 onMouseDown={onStageDown}
                 onMouseMove={onStageMove}
               >
-                <Layer ref={contentRef} scaleX={zoom} scaleY={zoom}>
+                <Layer ref={contentRef} scaleX={zoom} scaleY={zoom} x={-crop.x * zoom} y={-crop.y * zoom}>
                   <KImage image={img} name="background" />
                   {shown.map((s) => renderShape(s, true))}
                   {draft && renderShape(draft, false)}
                 </Layer>
-                <Layer ref={uiRef} scaleX={zoom} scaleY={zoom}>
+                <Layer ref={uiRef} scaleX={zoom} scaleY={zoom} x={-crop.x * zoom} y={-crop.y * zoom}>
+                  {cropDraft && cropShade(normalizeBox(cropDraft))}
                   <Transformer
                     ref={trRef}
-                    rotateEnabled={selected?.kind !== "blur"}
+                    rotateEnabled={selected?.kind !== "blur" && selected?.kind !== "magnify"}
                     enabledAnchors={
                       selected?.kind === "text"
                         ? []
@@ -813,8 +969,8 @@ export function Editor({ name, onClose, notify }: Props) {
                   autoFocus
                   value={textEdit.value}
                   style={{
-                    left: textEdit.x * zoom,
-                    top: textEdit.y * zoom,
+                    left: (textEdit.x - crop.x) * zoom,
+                    top: (textEdit.y - crop.y) * zoom,
                     color: textEdit.color,
                     fontSize: fontSize(textEdit.width) * zoom,
                   }}
@@ -836,7 +992,16 @@ export function Editor({ name, onClose, notify }: Props) {
       </div>
 
       <footer className="statusbar">
-        <span>{img ? `${img.width} x ${img.height}` : ""}</span>
+        {img && (
+          <button className="size-button" onClick={() => setResizeOpen(true)} title={tr("editor.resize")}>
+            {Math.round(crop.w * outScale)} x {Math.round(crop.h * outScale)}
+          </button>
+        )}
+        {doc.crop && (
+          <button onClick={() => commitDoc({ crop: undefined })} title={tr("editor.resetCrop")}>
+            <CropIcon size={14} /> {tr("editor.resetCrop")}
+          </button>
+        )}
         <div className="spacer" />
         <span className="zoom-value">{Math.round(zoom * 100)}%</span>
         <button onClick={() => zoomTo(zoom / ZOOM_STEP)} title={tr("editor.zoomOut")}>
@@ -857,6 +1022,19 @@ export function Editor({ name, onClose, notify }: Props) {
         </button>
       </footer>
 
+      {resizeOpen && img && (
+        <ResizeDialog
+          width={crop.w}
+          height={crop.h}
+          scale={outScale}
+          onApply={(s) => {
+            setResizeOpen(false);
+            if (s !== outScale) commitDoc({ scale: s === 1 ? undefined : s });
+          }}
+          onCancel={() => setResizeOpen(false)}
+        />
+      )}
+
       {askClose && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -875,6 +1053,60 @@ export function Editor({ name, onClose, notify }: Props) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Output size of the image: width, height and percentage stay proportional. */
+function ResizeDialog({
+  width,
+  height,
+  scale,
+  onApply,
+  onCancel,
+}: {
+  width: number;
+  height: number;
+  scale: number;
+  onApply: (scale: number) => void;
+  onCancel: () => void;
+}) {
+  const [s, setS] = useState(scale);
+  const set = (value: number, base: number) => {
+    if (Number.isFinite(value) && value > 0) setS(Math.min(8, Math.max(0.05, value / base)));
+  };
+  return (
+    <div className="modal-backdrop">
+      <form
+        className="modal resize-modal"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onApply(s);
+        }}
+      >
+        <h3>{tr("editor.resizeTitle")}</h3>
+        <label>
+          <span>{tr("editor.width")}</span>
+          <input type="number" min={1} value={Math.round(width * s)} onChange={(e) => set(Number(e.target.value), width)} autoFocus />
+        </label>
+        <label>
+          <span>{tr("editor.height")}</span>
+          <input type="number" min={1} value={Math.round(height * s)} onChange={(e) => set(Number(e.target.value), height)} />
+        </label>
+        <label>
+          <span>%</span>
+          <input type="number" min={5} max={800} value={Math.round(s * 100)} onChange={(e) => set(Number(e.target.value), 100)} />
+        </label>
+        <div className="modal-buttons">
+          <button type="submit">{tr("editor.apply")}</button>
+          <button type="button" className="ghost" onClick={() => setS(1)}>
+            {tr("editor.originalSize")}
+          </button>
+          <button type="button" className="ghost" onClick={onCancel}>
+            {tr("common.cancel")}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

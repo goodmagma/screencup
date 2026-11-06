@@ -7,12 +7,14 @@ mod capture;
 mod clickfx;
 mod clipboard;
 mod edits;
+mod export;
 mod hotkeys;
 mod i18n;
 mod library;
 mod recorder;
 mod settings;
 mod share;
+mod updater;
 
 use capture::CaptureKind;
 use recorder::RecordKind;
@@ -132,6 +134,7 @@ pub fn run() {
         .manage(recorder::Recorder::default())
         .manage(hotkeys::Bindings::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Launched at login with --autostart; the app starts hidden in the tray either way.
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -139,6 +142,9 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
+            updater::check_update,
+            updater::install_update,
+            export::export_capture,
             share::share_capture,
             share::list_shares,
             share::copy_text,
@@ -178,6 +184,7 @@ pub fn run() {
                 main.set_icon(small_icon())?;
             }
             library::enforce_limit_async(app.handle());
+            updater::start(app.handle());
             // Tray-only app on macOS: no Dock icon, no app menu bar.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);

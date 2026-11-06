@@ -57,6 +57,24 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   };
   const [context, setContext] = useState<{ x: number; y: number; name: string } | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
+  /** Newer version found by the background check (src-tauri/src/updater.rs). */
+  const [update, setUpdate] = useState<{ version: string } | null>(null);
+  const [updating, setUpdating] = useState(false);
+  useEffect(() => {
+    const off = listen<{ version: string }>("update-available", (e) => setUpdate(e.payload));
+    return () => {
+      off.then((f) => f());
+    };
+  }, []);
+  const installUpdate = () => {
+    setUpdating(true);
+    notify(t("update.downloading"));
+    invoke("install_update").catch((e) => {
+      setUpdating(false);
+      notify(t("update.failed", { error: String(e) }), true);
+    });
+  };
+
   /** Live shared links, newest first. */
   const [shares, setShares] = useState<Share[]>([]);
   /** Upload waiting for the one-time "links are public" confirmation. */
@@ -166,6 +184,10 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   const record = (kind: RecordKind) => invoke("toggle_recording", { kind });
   const isVideo = (name: string) => captures.find((c) => c.name === name)?.video ?? false;
   const open = (name: string) => invoke("open_capture", { name }).catch((e) => notify(String(e)));
+  const saveAs = (name: string) =>
+    invoke<string | null>("export_capture", { name })
+      .then((path) => path && notify(t("editor.exported", { path })))
+      .catch((e) => notify(String(e), true));
   const reveal = (name: string) => invoke("reveal_capture", { name }).catch((e) => notify(String(e)));
   /** Images open in the editor; videos in the system player. */
   const edit = (name: string) =>
@@ -253,6 +275,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       { label: video ? t("gallery.play") : t("gallery.edit"), onSelect: () => edit(name) },
       { label: t("common.copyToClipboard"), onSelect: () => copy(name), disabled: video },
       { label: t("gallery.openDefault"), onSelect: () => open(name) },
+      { label: t("gallery.saveAs"), onSelect: () => saveAs(name), disabled: video },
       { label: t("gallery.reveal"), onSelect: () => reveal(name) },
       ...shareActions([name]),
       { label: t("common.delete"), onSelect: () => remove([name]), danger: true },
@@ -288,6 +311,18 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
           </button>
         </div>
       </header>
+
+      {update && (
+        <div className="update-banner">
+          <span>{t("update.available", { version: update.version })}</span>
+          <button onClick={installUpdate} disabled={updating}>
+            {t("update.install")}
+          </button>
+          <button className="ghost icon" onClick={() => setUpdate(null)} title={t("common.close")}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <div className="gallery-grid" onClick={() => selectOnly(null)}>
         {captures.length === 0 ? (

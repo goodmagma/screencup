@@ -3,7 +3,19 @@
  * saved `Annotations` document re-renders identically on any screen.
  */
 
-export type Tool = "select" | "arrow" | "line" | "rect" | "ellipse" | "highlight" | "blur" | "text" | "step";
+export type Tool =
+  | "select"
+  | "arrow"
+  | "line"
+  | "pen"
+  | "rect"
+  | "ellipse"
+  | "highlight"
+  | "blur"
+  | "magnify"
+  | "text"
+  | "step"
+  | "crop";
 
 interface Base {
   id: string;
@@ -13,24 +25,51 @@ interface Base {
 }
 
 export type LineShape = Base & { kind: "arrow" | "line"; points: [number, number, number, number] };
+/** Freehand stroke: x, y pairs. */
+export type PenShape = Base & { kind: "pen"; points: number[] };
 export type BoxShape = Base & {
-  kind: "rect" | "ellipse" | "highlight" | "blur";
+  /** "magnify": an ellipse showing the image under it at `MAGNIFY_ZOOM`. */
+  kind: "rect" | "ellipse" | "highlight" | "blur" | "magnify";
   x: number;
   y: number;
   w: number;
   h: number;
-  /** Degrees, clockwise. Blur is never rotated: its pixels must stay aligned with the image. */
+  /** Degrees, clockwise. Blur and magnify are never rotated: they show the image beneath. */
   rotation?: number;
 };
 export type TextShape = Base & { kind: "text"; x: number; y: number; text: string; rotation?: number };
 export type StepShape = Base & { kind: "step"; x: number; y: number; n: number };
-export type Shape = LineShape | BoxShape | TextShape | StepShape;
+export type Shape = LineShape | PenShape | BoxShape | TextShape | StepShape;
 
-/** Stored as `<library>/.originals/<name>.json`. */
+/** Part of the source image kept, in source pixels. */
+export interface Crop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * What the editor edits and undoes: the shapes plus the crop and the output scale. Crop and
+ * scale only apply when flattening, so they stay reversible after saving.
+ */
+export interface Doc {
+  shapes: Shape[];
+  crop?: Crop;
+  /** Output size relative to the crop, 1 = unchanged. */
+  scale?: number;
+}
+
+/** Stored as `<library>/.originals/<name>.json`. `crop` and `scale` arrived in 0.2.0. */
 export interface Annotations {
   version: 1;
   shapes: Shape[];
+  crop?: Crop;
+  scale?: number;
 }
+
+/** Magnification of the magnify shape. */
+export const MAGNIFY_ZOOM = 2;
 
 export const COLORS = ["#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#2d8cff", "#8e4ec6", "#1c1f24", "#ffffff"];
 
@@ -41,12 +80,15 @@ export const TOOLS: { tool: Tool; key: string }[] = [
   { tool: "select", key: "v" },
   { tool: "arrow", key: "a" },
   { tool: "line", key: "l" },
+  { tool: "pen", key: "p" },
   { tool: "rect", key: "r" },
   { tool: "ellipse", key: "e" },
   { tool: "highlight", key: "h" },
   { tool: "blur", key: "b" },
+  { tool: "magnify", key: "m" },
   { tool: "text", key: "t" },
   { tool: "step", key: "n" },
+  { tool: "crop", key: "c" },
 ];
 
 /** Keeps annotation sizes readable on large captures: 1 up to ~1600px, growing beyond. */
@@ -56,10 +98,13 @@ export const fontSize = (width: number) => 10 + width * 3.5;
 export const stepRadius = (width: number) => 9 + width * 2;
 
 export const isBox = (s: Shape): s is BoxShape =>
-  s.kind === "rect" || s.kind === "ellipse" || s.kind === "highlight" || s.kind === "blur";
+  s.kind === "rect" || s.kind === "ellipse" || s.kind === "highlight" || s.kind === "blur" || s.kind === "magnify";
+
+/** Box shapes positioned by their centre in Konva (ellipses). */
+export const isCentred = (s: Shape): s is BoxShape => s.kind === "ellipse" || s.kind === "magnify";
 
 /** Boxes drawn right-to-left or bottom-to-top get positive width/height. */
-export function normalizeBox(s: BoxShape): BoxShape {
+export function normalizeBox<T extends { x: number; y: number; w: number; h: number }>(s: T): T {
   return {
     ...s,
     x: Math.min(s.x, s.x + s.w),
@@ -75,6 +120,7 @@ export function isMeaningful(s: Shape): boolean {
     const [x1, y1, x2, y2] = s.points;
     return Math.hypot(x2 - x1, y2 - y1) >= 4;
   }
+  if (s.kind === "pen") return s.points.length >= 4;
   if (isBox(s)) return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
   return true;
 }
@@ -98,15 +144,15 @@ export function pixelate(img: HTMLImageElement): HTMLCanvasElement {
   return out;
 }
 
-/** Undo/redo over immutable snapshots of the shape list. */
+/** Undo/redo over immutable document snapshots. */
 export interface History {
-  stack: Shape[][];
+  stack: Doc[];
   index: number;
 }
 
-export const historyOf = (shapes: Shape[]): History => ({ stack: [shapes], index: 0 });
+export const historyOf = (doc: Doc): History => ({ stack: [doc], index: 0 });
 
-export const push = (h: History, shapes: Shape[]): History => ({
-  stack: [...h.stack.slice(0, h.index + 1), shapes],
+export const push = (h: History, doc: Doc): History => ({
+  stack: [...h.stack.slice(0, h.index + 1), doc],
   index: h.index + 1,
 });
