@@ -63,7 +63,7 @@ background may already own PrintScreen.
 | Platform | Status |
 | -------- | ------ |
 | Windows 10/11 | Main target. Everything above works. |
-| macOS, Linux | The code is written cross-platform, but has not been built or tested yet. System audio and click highlights are Windows-only for now. |
+| macOS (Apple silicon), Linux | Built by the release pipeline, not tested much yet. System audio, click highlights, window snapping, OCR, e-mail attachments and "Open with" are Windows-only for now. |
 
 ## Install
 

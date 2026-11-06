@@ -248,8 +248,19 @@ pub async fn drag_captures(window: tauri::WebviewWindow, names: Vec<String>) -> 
     let preview = names.first().and_then(|n| drag_preview(&app, n)).unwrap_or_default();
     let (done, wait) = std::sync::mpsc::channel();
     app.run_on_main_thread(move || {
+        // GTK takes the drag from its own window type; Windows and macOS from the raw handle.
+        #[cfg(target_os = "linux")]
+        let source = match window.gtk_window() {
+            Ok(w) => w,
+            Err(e) => {
+                let _ = done.send(Err(e.to_string()));
+                return;
+            }
+        };
+        #[cfg(not(target_os = "linux"))]
+        let source = &window;
         let result = drag::start_drag(
-            &window,
+            &source,
             drag::DragItem::Files(paths),
             drag::Image::Raw(preview),
             |_, _| {},

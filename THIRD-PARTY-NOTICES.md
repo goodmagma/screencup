@@ -12,7 +12,8 @@ screen video. It is not linked into Screencup.
   GNU General Public License v3. The full text is in `licenses/ffmpeg/LICENSE.txt`.
 - Build and version: `licenses/ffmpeg/BUILD.txt` and `licenses/ffmpeg/README.txt`. The README
   gives the exact source commit.
-- Source code: https://github.com/FFmpeg/FFmpeg. Windows builds come from https://www.gyan.dev/ffmpeg/builds/.
+- Source code: https://github.com/FFmpeg/FFmpeg. Windows builds come from
+  https://www.gyan.dev/ffmpeg/builds/, Linux and macOS builds from https://ffmpeg.martin-riedl.de/.
 - You may replace `ffmpeg` in the installation folder with any other build, including an
   LGPL one. Screencup then uses that build's H.264 encoder.
 

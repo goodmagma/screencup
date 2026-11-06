@@ -37,15 +37,31 @@ if (!ffmpeg) throw new Error("ffmpeg not found: set SCREENCUP_FFMPEG or put ffmp
 install(ffmpeg, "ffmpeg");
 
 // The installer ships ffmpeg's licence and build details (bundle.resources): the GPL asks
-// for its text and a pointer to the matching source. Release builds such as gyan.dev's keep
-// LICENSE and README.txt (with the source commit) one folder above bin/.
+// for its text and a pointer to the matching source. gyan.dev's Windows builds keep LICENSE and
+// README.txt (with the source commit) one folder above bin/; other builds keep them next to the
+// binary, or ship none, in which case a GPL build gets the GPL text kept in scripts/licenses.
 const licenses = join(outDir, "licenses", "ffmpeg");
 mkdirSync(licenses, { recursive: true });
-writeFileSync(join(licenses, "BUILD.txt"), execFileSync(ffmpeg, ["-hide_banner", "-version"], { encoding: "utf8" }));
-for (const [file, as] of [["LICENSE", "LICENSE.txt"], ["LICENSE.txt", "LICENSE.txt"], ["README.txt", "README.txt"]]) {
-  const from = join(dirname(ffmpeg), "..", file);
-  if (existsSync(from)) copyFileSync(from, join(licenses, as));
+const build = execFileSync(ffmpeg, ["-hide_banner", "-version"], { encoding: "utf8" });
+writeFileSync(join(licenses, "BUILD.txt"), build);
+const names = [
+  ["LICENSE", "LICENSE.txt"],
+  ["LICENSE.txt", "LICENSE.txt"],
+  ["GPLv3.txt", "LICENSE.txt"],
+  ["README.txt", "README.txt"],
+  ["readme.txt", "README.txt"],
+];
+for (const dir of [join(dirname(ffmpeg), ".."), dirname(ffmpeg)]) {
+  for (const [file, as] of names) {
+    const from = join(dir, file);
+    if (existsSync(from) && !existsSync(join(licenses, as))) copyFileSync(from, join(licenses, as));
+  }
 }
 if (!existsSync(join(licenses, "LICENSE.txt"))) {
-  console.warn("ffmpeg: no LICENSE next to the binary; add its licence text to " + licenses);
+  if (build.includes("--enable-gpl")) {
+    copyFileSync(join(root, "scripts", "licenses", "GPL-3.0.txt"), join(licenses, "LICENSE.txt"));
+    console.log("ffmpeg: no licence file next to the binary; using the GPL-3.0 text");
+  } else {
+    console.warn("ffmpeg: no LICENSE next to the binary; add its licence text to " + licenses);
+  }
 }
