@@ -38,12 +38,19 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../LICENSE": "licenses/LICENSE.txt",
+      "../THIRD-PARTY-NOTICES.md": "licenses/THIRD-PARTY-NOTICES.md",
+      "binaries/licenses/ffmpeg/": "licenses/ffmpeg/"
+    },
     "externalBin": [
       "binaries/screencup-overlay",
       "binaries/ffmpeg"
     ],
     "shortDescription": "Screenshot e registrazioni dello schermo",
     "publisher": "goodmagma",
+    "copyright": "Copyright (c) 2026 goodmagma",
+    "license": "MIT",
     "category": "Utility",
     "windows": {
       "nsis": {

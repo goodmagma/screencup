@@ -7,7 +7,7 @@
 // too, the recorder then falls back to the platform H.264 encoder.
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,3 +35,17 @@ const ffmpeg =
     .find((p) => existsSync(p));
 if (!ffmpeg) throw new Error("ffmpeg not found: set SCREENCUP_FFMPEG or put ffmpeg on PATH");
 install(ffmpeg, "ffmpeg");
+
+// The installer ships ffmpeg's licence and build details (bundle.resources): the GPL asks
+// for its text and a pointer to the matching source. Release builds such as gyan.dev's keep
+// LICENSE and README.txt (with the source commit) one folder above bin/.
+const licenses = join(outDir, "licenses", "ffmpeg");
+mkdirSync(licenses, { recursive: true });
+writeFileSync(join(licenses, "BUILD.txt"), execFileSync(ffmpeg, ["-hide_banner", "-version"], { encoding: "utf8" }));
+for (const [file, as] of [["LICENSE", "LICENSE.txt"], ["LICENSE.txt", "LICENSE.txt"], ["README.txt", "README.txt"]]) {
+  const from = join(dirname(ffmpeg), "..", file);
+  if (existsSync(from)) copyFileSync(from, join(licenses, as));
+}
+if (!existsSync(join(licenses, "LICENSE.txt"))) {
+  console.warn("ffmpeg: no LICENSE next to the binary; add its licence text to " + licenses);
+}
