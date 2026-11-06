@@ -203,4 +203,7 @@ export const pt: Record<Key, string> = {
   "import.many": "{count} arquivos importados",
   "import.none": "Nada para importar: são aceitas imagens (PNG, JPG, BMP, GIF, WebP, TIFF) e vídeos MP4",
   "import.failed": "Falha na importação: {error}",
+  "paste.menu": "Colar da área de transferência",
+  "paste.one": "Imagem colada da área de transferência",
+  "paste.empty": "A área de transferência não tem imagem nem arquivo para importar",
 };

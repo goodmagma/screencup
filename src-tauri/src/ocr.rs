@@ -55,7 +55,8 @@ fn recognize(img: xcap::image::RgbaImage) -> Result<String, String> {
         px.swap(0, 2);
     }
     let buffer = CryptographicBuffer::CreateFromByteArray(&bgra).map_err(err)?;
-    let bitmap = SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, w, h).map_err(err)?;
+    let bitmap =
+        SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, w, h).map_err(err)?;
 
     let result = engine.RecognizeAsync(&bitmap).map_err(err)?.join().map_err(err)?;
     let lines = result.Lines().map_err(err)?;

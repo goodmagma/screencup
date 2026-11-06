@@ -203,4 +203,7 @@ export const es: Record<Key, string> = {
   "import.many": "{count} archivos importados",
   "import.none": "Nada que importar: se aceptan imágenes (PNG, JPG, BMP, GIF, WebP, TIFF) y vídeos MP4",
   "import.failed": "La importación ha fallado: {error}",
+  "paste.menu": "Pegar desde el portapapeles",
+  "paste.one": "Imagen pegada desde el portapapeles",
+  "paste.empty": "El portapapeles no contiene ninguna imagen ni archivo que importar",
 };

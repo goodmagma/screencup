@@ -44,10 +44,8 @@ pub async fn open_video_editor(app: AppHandle, name: String) -> Result<(), Strin
         let _ = w.unminimize();
         return w.set_focus().map_err(|e| e.to_string());
     }
-    let init = format!(
-        "window.__SCREENCUP_VIDEO__ = {};",
-        serde_json::to_string(&name).map_err(|e| e.to_string())?
-    );
+    let init =
+        format!("window.__SCREENCUP_VIDEO__ = {};", serde_json::to_string(&name).map_err(|e| e.to_string())?);
     WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
         .initialization_script(&init)
         .title(format!("Screencup video - {name}"))
@@ -66,7 +64,12 @@ fn run(cmd: &mut std::process::Command) -> Result<(), String> {
     if output.status.success() {
         Ok(())
     } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().lines().last().unwrap_or("ffmpeg failed").to_owned())
+        Err(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .lines()
+            .last()
+            .unwrap_or("ffmpeg failed")
+            .to_owned())
     }
 }
 

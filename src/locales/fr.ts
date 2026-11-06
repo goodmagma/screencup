@@ -203,4 +203,7 @@ export const fr: Record<Key, string> = {
   "import.many": "{count} fichiers importés",
   "import.none": "Rien à importer : images (PNG, JPG, BMP, GIF, WebP, TIFF) et vidéos MP4 acceptées",
   "import.failed": "Échec de l'import : {error}",
+  "paste.menu": "Coller depuis le presse-papiers",
+  "paste.one": "Image collée depuis le presse-papiers",
+  "paste.empty": "Le presse-papiers ne contient ni image ni fichier à importer",
 };

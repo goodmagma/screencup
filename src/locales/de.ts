@@ -203,4 +203,7 @@ export const de: Record<Key, string> = {
   "import.many": "{count} Dateien importiert",
   "import.none": "Nichts zu importieren: Bilder (PNG, JPG, BMP, GIF, WebP, TIFF) und MP4-Videos werden angenommen",
   "import.failed": "Import fehlgeschlagen: {error}",
+  "paste.menu": "Aus der Zwischenablage einfügen",
+  "paste.one": "Bild aus der Zwischenablage eingefügt",
+  "paste.empty": "Die Zwischenablage enthält kein Bild und keine Datei zum Importieren",
 };

@@ -321,50 +321,72 @@ const IMPORT_IMAGES: [&str; 8] = ["png", "jpg", "jpeg", "bmp", "gif", "webp", "t
 /// the new captures, in order.
 #[tauri::command]
 pub async fn import_captures(app: AppHandle, paths: Vec<PathBuf>) -> Result<Vec<PathBuf>, String> {
-    let library = dir(&app)?;
-    std::fs::create_dir_all(&library).map_err(|e| format!("{}: {e}", library.display()))?;
     let handle = app.clone();
+    let (imported, errors) = tauri::async_runtime::spawn_blocking(move || import_files(&handle, paths))
+        .await
+        .map_err(|e| e.to_string())??;
+    announce_imports(&app, imported, errors)
+}
+
+/// Copies `paths` into the library (see `import_captures`); returns the new captures and
+/// the errors of the files that failed.
+pub fn import_files<R: Runtime>(
+    app: &AppHandle<R>,
+    paths: Vec<PathBuf>,
+) -> Result<(Vec<PathBuf>, Vec<String>), String> {
+    let library = dir(app)?;
+    std::fs::create_dir_all(&library).map_err(|e| format!("{}: {e}", library.display()))?;
     // Compared canonicalised: the drop may spell the same folder differently.
     let library = std::fs::canonicalize(&library).unwrap_or(library);
-    let imported = tauri::async_runtime::spawn_blocking(move || {
-        let mut imported = Vec::new();
-        let mut errors = Vec::new();
-        for src in paths {
-            let folder = src.parent().map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()));
-            if folder.as_deref() == Some(library.as_path()) {
-                continue;
-            }
-            let ext = src.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-            let result = if IMPORT_IMAGES.contains(&ext.as_str()) {
-                import_image(&handle, &src)
-            } else if ext == VIDEO_EXT {
-                new_capture_path(&handle).and_then(|dest| {
-                    let dest = unique(dest.with_extension(VIDEO_EXT));
-                    std::fs::copy(&src, &dest).map(|_| dest).map_err(|e| format!("{}: {e}", src.display()))
-                })
-            } else {
-                continue;
-            };
-            match result {
-                Ok(dest) => imported.push(dest),
-                Err(e) => errors.push(e),
-            }
+    let mut imported = Vec::new();
+    let mut errors = Vec::new();
+    for src in paths {
+        let folder = src.parent().map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()));
+        if folder.as_deref() == Some(library.as_path()) {
+            continue;
         }
-        (imported, errors)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-    let (imported, errors) = imported;
+        let ext = src.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let result = if IMPORT_IMAGES.contains(&ext.as_str()) {
+            import_image(app, &src)
+        } else if ext == VIDEO_EXT {
+            new_capture_path(app).and_then(|dest| {
+                let dest = unique(dest.with_extension(VIDEO_EXT));
+                std::fs::copy(&src, &dest).map(|_| dest).map_err(|e| format!("{}: {e}", src.display()))
+            })
+        } else {
+            continue;
+        };
+        match result {
+            Ok(dest) => imported.push(dest),
+            Err(e) => errors.push(e),
+        }
+    }
+    Ok((imported, errors))
+}
+
+/// Tells the gallery about new captures; an error only when nothing could be added.
+pub fn announce_imports<R: Runtime>(
+    app: &AppHandle<R>,
+    imported: Vec<PathBuf>,
+    errors: Vec<String>,
+) -> Result<Vec<PathBuf>, String> {
     for dest in &imported {
         let _ = app.emit("capture-added", dest);
     }
     if !imported.is_empty() {
-        enforce_limit_async(&app);
+        enforce_limit_async(app);
     }
     match errors.first() {
         Some(e) if imported.is_empty() => Err(e.clone()),
         _ => Ok(imported),
     }
+}
+
+/// Saves a pasted image as a new capture.
+pub fn save_new_capture<R: Runtime>(app: &AppHandle<R>, img: &RgbaImage) -> Result<PathBuf, String> {
+    let dest = unique(new_capture_path(app)?);
+    save_png(img, &dest)?;
+    Ok(dest)
 }
 
 fn import_image<R: Runtime>(app: &AppHandle<R>, src: &Path) -> Result<PathBuf, String> {

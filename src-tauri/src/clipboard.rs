@@ -44,3 +44,37 @@ pub fn copy_capture(app: AppHandle, name: String) -> Result<(), String> {
     }
     copy_image(&app, &library::load(&app, &name)?)
 }
+
+/// Ctrl+V in the gallery: files copied in the file manager are imported like a drop; an
+/// image (copied from a browser, an editor, a screenshot tool) becomes a new capture.
+/// Returns the new captures; empty when the clipboard holds neither.
+#[tauri::command]
+pub async fn paste_capture(app: AppHandle) -> Result<Vec<std::path::PathBuf>, String> {
+    let handle = app.clone();
+    let (imported, errors) = tauri::async_runtime::spawn_blocking(move || -> Result<_, String> {
+        let state = handle.state::<Clipboard>();
+        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+        if guard.is_none() {
+            *guard = Some(arboard::Clipboard::new().map_err(|e| e.to_string())?);
+        }
+        let clipboard = guard.as_mut().expect("clipboard initialised above");
+        if let Ok(files) = clipboard.get().file_list()
+            && !files.is_empty()
+        {
+            drop(guard);
+            return library::import_files(&handle, files);
+        }
+        match clipboard.get_image() {
+            Ok(data) => {
+                let img = RgbaImage::from_raw(data.width as u32, data.height as u32, data.bytes.into_owned())
+                    .ok_or("clipboard image has an unexpected size")?;
+                drop(guard);
+                Ok((vec![library::save_new_capture(&handle, &img)?], Vec::new()))
+            }
+            Err(_) => Ok((Vec::new(), Vec::new())),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    library::announce_imports(&app, imported, errors)
+}

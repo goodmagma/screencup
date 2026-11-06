@@ -256,10 +256,11 @@ fn begin(app: &AppHandle) -> Result<(), String> {
     }
     let stem = out.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let prefs = settings::load(app);
-    let sources = [(prefs.record_microphone, Source::Microphone), (prefs.record_system_audio, Source::System)]
-        .into_iter()
-        .filter_map(|(on, source)| on.then_some(source))
-        .collect();
+    let sources =
+        [(prefs.record_microphone, Source::Microphone), (prefs.record_system_audio, Source::System)]
+            .into_iter()
+            .filter_map(|(on, source)| on.then_some(source))
+            .collect();
     let mut rec = Recording {
         area,
         framerate: prefs.framerate.to_string(),
@@ -306,21 +307,26 @@ fn start_segment(app: &AppHandle, rec: &Recording) -> Result<Segment, String> {
         }
     }
     let file = base.with_extension("mp4");
-    let video = if audio.is_empty() { file.clone() } else { base.with_file_name(format!("{}-{n}-video.mp4", rec.stem)) };
+    let video = if audio.is_empty() {
+        file.clone()
+    } else {
+        base.with_file_name(format!("{}-{n}-video.mp4", rec.stem))
+    };
 
-    let spawned = File::create(&rec.log).map_err(|e| format!("{}: {e}", rec.log.display())).and_then(|stderr| {
-        helper_command(&rec.ffmpeg)
-            .args(["-hide_banner", "-loglevel", "warning", "-y"])
-            .args(input_args(rec.area, &rec.framerate))
-            .args(encoder_args(&rec.ffmpeg))
-            .args(["-movflags", "+faststart"])
-            .arg(&video)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(stderr)
-            .spawn()
-            .map_err(|e| format!("{}: {e}", rec.ffmpeg.display()))
-    });
+    let spawned =
+        File::create(&rec.log).map_err(|e| format!("{}: {e}", rec.log.display())).and_then(|stderr| {
+            helper_command(&rec.ffmpeg)
+                .args(["-hide_banner", "-loglevel", "warning", "-y"])
+                .args(input_args(rec.area, &rec.framerate))
+                .args(encoder_args(&rec.ffmpeg))
+                .args(["-movflags", "+faststart"])
+                .arg(&video)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(stderr)
+                .spawn()
+                .map_err(|e| format!("{}: {e}", rec.ffmpeg.display()))
+        });
     let mut child = match spawned {
         Ok(c) => c,
         Err(e) => {

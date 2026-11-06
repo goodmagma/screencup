@@ -203,5 +203,8 @@ export const en: Record<Key, string> = {
   "import.many": "{count} files imported",
   "import.none": "Nothing to import: images (PNG, JPG, BMP, GIF, WebP, TIFF) and MP4 videos are accepted",
   "import.failed": "Import failed: {error}",
+  "paste.menu": "Paste from clipboard",
+  "paste.one": "Image pasted from the clipboard",
+  "paste.empty": "The clipboard holds no image or file to import",
 };
 

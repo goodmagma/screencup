@@ -78,6 +78,25 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       });
   };
 
+  /** Ctrl+V: the clipboard image, or files copied in the file manager, become captures. */
+  const paste = () => {
+    importing.current = true;
+    invoke<string[]>("paste_capture")
+      .then((files) =>
+        notify(
+          files.length === 0
+            ? t("paste.empty")
+            : files.length === 1
+              ? t("paste.one")
+              : t("import.many", { count: files.length }),
+        ),
+      )
+      .catch((e) => notify(t("import.failed", { error: String(e) }), true))
+      .finally(() => {
+        importing.current = false;
+      });
+  };
+
   useEffect(() => {
     const off = getCurrentWebview().onDragDropEvent((event) => {
       const p = event.payload;
@@ -318,6 +337,9 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       else if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
         setSelection(captures.map((c) => c.name));
+      } else if (mod && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        paste();
       } else if (e.key === "Delete") remove(selection);
       if (!selected) return;
       if (e.key === "Enter") edit(selected);
@@ -447,6 +469,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
             { label: t("gallery.captureRegion") + hotkeyHint(settings?.hotkeys.capture_region), onSelect: () => capture("region") },
             { label: t("gallery.captureScreen") + hotkeyHint(settings?.hotkeys.capture_screen), onSelect: () => capture("screen") },
             { label: t("gallery.captureAll") + hotkeyHint(settings?.hotkeys.capture_all), onSelect: () => capture("all") },
+            { label: `${t("paste.menu")} (Ctrl+V)`, onSelect: paste },
           ]}
         />
         <BigButton

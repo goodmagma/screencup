@@ -188,6 +188,7 @@ pub fn run() {
             library::drag_captures,
             library::open_capture_with,
             library::import_captures,
+            clipboard::paste_capture,
             edits::read_edit_source,
             edits::load_annotations,
             edits::save_annotations,

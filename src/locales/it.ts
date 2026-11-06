@@ -208,6 +208,9 @@ export const it = {
   "import.many": "{count} file importati",
   "import.none": "Nessun file importabile: sono accettate immagini (PNG, JPG, BMP, GIF, WebP, TIFF) e video MP4",
   "import.failed": "Importazione non riuscita: {error}",
+  "paste.menu": "Incolla dagli appunti",
+  "paste.one": "Immagine incollata dagli appunti",
+  "paste.empty": "Negli appunti non c'è un'immagine né un file da importare",
 };
 
 export type Key = keyof typeof it;
