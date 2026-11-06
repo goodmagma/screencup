@@ -41,7 +41,8 @@
     "resources": {
       "../LICENSE": "licenses/LICENSE.txt",
       "../THIRD-PARTY-NOTICES.md": "licenses/THIRD-PARTY-NOTICES.md",
-      "binaries/licenses/ffmpeg/": "licenses/ffmpeg/"
+      "binaries/licenses/ffmpeg/": "licenses/ffmpeg/",
+      "binaries/licenses/THIRD-PARTY-LICENSES.txt": "licenses/THIRD-PARTY-LICENSES.txt"
     },
     "externalBin": [
       "binaries/screencup-overlay",

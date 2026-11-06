@@ -27,5 +27,9 @@ MIT, Apache-2.0, BSD, ISC, Zlib or Unicode-3.0. The main ones are:
 - Konva and react-konva: MIT
 - Lucide icons: ISC
 
-Each library's copyright notice and licence text ship with its source code. The sources are
-on crates.io for Rust crates and on npmjs.com for JavaScript packages.
+The full list, with every library's version, licence and licence text, is in
+`licenses/THIRD-PARTY-LICENSES.txt` in the installation folder. The build generates it with
+`scripts/collect-licenses.mjs`.
+
+Some of the Rust crates (cssparser, selectors, dtoa-short, option-ext) are under the Mozilla
+Public License 2.0. Screencup uses them unmodified, and their source is available on crates.io.
