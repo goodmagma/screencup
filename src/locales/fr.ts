@@ -181,4 +181,6 @@ export const fr: Record<Key, string> = {
   "ocr.copied": "Texte copié dans le presse-papiers ({count} caractères)",
   "ocr.none": "Aucun texte trouvé dans l'image",
   "ocr.failed": "Échec de la reconnaissance du texte : {error}",
+  "rec.pause": "Mettre en pause",
+  "rec.resume": "Reprendre l'enregistrement",
 };

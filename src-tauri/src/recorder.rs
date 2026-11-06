@@ -9,8 +9,12 @@
 //! Cancel and the frame stays. Frame and panel are excluded from screen capture.
 //!
 //! With audio enabled in the settings, the video goes to a work file while the microphone
-//! and/or system audio are written to WAVs (see `audio`); on stop everything is muxed into
-//! the library MP4, aligning the tracks on their ends since all stop at the same moment.
+//! and/or system audio are written to WAVs (see `audio`); when the segment ends everything is
+//! muxed, aligning the tracks on their ends since all stop at the same moment.
+//!
+//! Pause ends the current segment (ffmpeg cannot pause a screen grab); Resume starts a new
+//! one with the same settings. Stop joins the segments into the library MP4 without
+//! re-encoding.
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -57,14 +61,36 @@ const FRAME_GRIP: f64 = 44.0;
 /// shape keeps it visible. Keep in sync with `.recframe-size` in src/styles.css.
 const FRAME_LABEL_BOX: (f64, f64) = (96.0, 22.0);
 
-struct Recording {
+/// One stretch of recording between start / resume and pause / stop.
+struct Segment {
     child: Child,
+    /// File ffmpeg writes: the segment itself, or a video-only work file when audio must be
+    /// muxed in.
+    video: PathBuf,
+    /// The finished segment, with its audio.
+    file: PathBuf,
+    audio: Vec<AudioCapture>,
+    started: Instant,
+}
+
+struct Recording {
+    area: Area,
+    framerate: String,
+    ffmpeg: PathBuf,
     /// Final file in the library.
     out: PathBuf,
-    /// File ffmpeg writes: `out` itself, or a work file when audio must be muxed in.
-    video: PathBuf,
+    /// Work folder and file stem for segments and WAVs.
+    work: PathBuf,
+    stem: String,
     log: PathBuf,
-    audio: Vec<AudioCapture>,
+    /// Audio sources asked for in the settings when recording started.
+    sources: Vec<Source>,
+    /// The segment being recorded; `None` while paused.
+    segment: Option<Segment>,
+    /// Finished segments, in order.
+    done: Vec<PathBuf>,
+    /// Recorded time of the finished segments.
+    elapsed: Duration,
     /// Click highlights drawn over the area while recording, when enabled.
     click_fx: Option<ClickFx>,
 }
@@ -102,6 +128,18 @@ pub async fn toggle_recording(app: AppHandle, kind: RecordKind) {
 #[tauri::command]
 pub async fn stop_recording(app: AppHandle) {
     stop(app)
+}
+
+/// Pause button of the panel: ends the current segment.
+#[tauri::command]
+pub async fn pause_recording(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || pause(&app)).await.map_err(|e| e.to_string())?
+}
+
+/// Resume button of the panel: starts a new segment.
+#[tauri::command]
+pub async fn resume_recording(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || resume(&app)).await.map_err(|e| e.to_string())?
 }
 
 /// Record button of the panel.
@@ -201,37 +239,71 @@ fn begin(app: &AppHandle) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
     let stem = out.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-
-    // A source that cannot be opened is skipped with a warning; the video still records.
     let prefs = settings::load(app);
-    let wanted = [
-        (prefs.record_microphone, Source::Microphone, "mic"),
-        (prefs.record_system_audio, Source::System, "system"),
-    ];
+    let sources = [(prefs.record_microphone, Source::Microphone), (prefs.record_system_audio, Source::System)]
+        .into_iter()
+        .filter_map(|(on, source)| on.then_some(source))
+        .collect();
+    let mut rec = Recording {
+        area,
+        framerate: prefs.framerate.to_string(),
+        ffmpeg,
+        out,
+        work,
+        stem,
+        log,
+        sources,
+        segment: None,
+        done: Vec::new(),
+        elapsed: Duration::ZERO,
+        click_fx: None,
+    };
+    let segment = start_segment(app, &rec)?;
+    let mic = segment.audio.iter().any(|c| matches!(c.source, Source::Microphone));
+    let system = segment.audio.iter().any(|c| matches!(c.source, Source::System));
+    rec.segment = Some(segment);
+    rec.click_fx = start_click_fx(app, area, prefs.show_clicks);
+    *app.state::<Recorder>().running.lock().map_err(|e| e.to_string())? = Some(rec);
+    let started = RecordingStarted { started_ms: now_ms(), mic, system };
+    let _ = app.emit_to(BAR_LABEL, "recording-started", &started);
+    let _ = app.emit_to(FRAME_LABEL, "recording-started", &started);
+    Ok(())
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+/// Starts ffmpeg and the audio captures for the next segment of `rec`.
+fn start_segment(app: &AppHandle, rec: &Recording) -> Result<Segment, String> {
+    let n = rec.done.len();
+    let base = rec.work.join(format!("{}-{n}", rec.stem));
+    // A source that cannot be opened is skipped with a warning; the video still records.
     let mut audio = Vec::new();
-    for (_, source, tag) in wanted.into_iter().filter(|(on, ..)| *on) {
-        match AudioCapture::start(source, work.join(format!("{stem}-{tag}.wav"))) {
+    for &source in &rec.sources {
+        let wav = base.with_file_name(format!("{}-{n}-{}.wav", rec.stem, source.label().replace(' ', "-")));
+        match AudioCapture::start(source, wav) {
             Ok(c) => audio.push(c),
             Err(e) => {
                 let _ = app.emit("recording-warning", format!("{}: {e}", source.label()));
             }
         }
     }
-    let video = if audio.is_empty() { out.clone() } else { work.join(format!("{stem}-video.mp4")) };
-    let framerate = prefs.framerate.to_string();
+    let file = base.with_extension("mp4");
+    let video = if audio.is_empty() { file.clone() } else { base.with_file_name(format!("{}-{n}-video.mp4", rec.stem)) };
 
-    let spawned = File::create(&log).map_err(|e| format!("{}: {e}", log.display())).and_then(|stderr| {
-        helper_command(&ffmpeg)
+    let spawned = File::create(&rec.log).map_err(|e| format!("{}: {e}", rec.log.display())).and_then(|stderr| {
+        helper_command(&rec.ffmpeg)
             .args(["-hide_banner", "-loglevel", "warning", "-y"])
-            .args(input_args(area, &framerate))
-            .args(encoder_args(&ffmpeg))
+            .args(input_args(rec.area, &rec.framerate))
+            .args(encoder_args(&rec.ffmpeg))
             .args(["-movflags", "+faststart"])
             .arg(&video)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(stderr)
             .spawn()
-            .map_err(|e| format!("{}: {e}", ffmpeg.display()))
+            .map_err(|e| format!("{}: {e}", rec.ffmpeg.display()))
     });
     let mut child = match spawned {
         Ok(c) => c,
@@ -240,25 +312,92 @@ fn begin(app: &AppHandle) -> Result<(), String> {
             return Err(e);
         }
     };
-
     std::thread::sleep(STARTUP_CHECK);
     if let Ok(Some(status)) = child.try_wait() {
         discard_audio(audio);
         let _ = std::fs::remove_file(&video);
-        return Err(format!("ffmpeg exited at start ({status}): {}", read_log(&log)));
+        return Err(format!("ffmpeg exited at start ({status}): {}", read_log(&rec.log)));
     }
-    let mic = audio.iter().any(|c| matches!(c.source, Source::Microphone));
-    let system = audio.iter().any(|c| matches!(c.source, Source::System));
-    *app.state::<Recorder>().running.lock().map_err(|e| e.to_string())? = Some(Recording {
-        child,
-        out,
-        video,
-        log,
-        audio,
-        click_fx: start_click_fx(app, area, prefs.show_clicks),
-    });
-    let started_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
-    let started = RecordingStarted { started_ms, mic, system };
+    Ok(Segment { child, video, file, audio, started: Instant::now() })
+}
+
+/// Stops ffmpeg and the audio captures of a segment and muxes them into `segment.file`.
+/// If muxing fails the silent video is kept rather than lost.
+fn finish_segment(app: &AppHandle, mut seg: Segment, log: &Path) -> Result<PathBuf, String> {
+    // Video and audio stop at the same moment: the mux aligns the tracks on their ends.
+    for c in &seg.audio {
+        c.request_stop();
+    }
+    if let Some(stdin) = seg.child.stdin.as_mut() {
+        let _ = stdin.write_all(b"q");
+        let _ = stdin.flush();
+    }
+    drop(seg.child.stdin.take());
+    let wavs: Vec<PathBuf> = seg
+        .audio
+        .drain(..)
+        .filter_map(|c| {
+            let label = c.source.label();
+            c.finish().map_err(|e| eprintln!("{label}: {e}")).ok()
+        })
+        .collect();
+    let result = match wait_with_timeout(&mut seg.child, STOP_TIMEOUT) {
+        Some(s) if s.success() && seg.video.exists() => {
+            if seg.video == seg.file {
+                Ok(())
+            } else if !wavs.is_empty() && mux(&seg.video, &wavs, &seg.file).is_ok() {
+                let _ = std::fs::remove_file(&seg.video);
+                Ok(())
+            } else {
+                if !wavs.is_empty() {
+                    let _ = app.emit("recording-warning", "audio not added to part of the recording");
+                }
+                move_file(&seg.video, &seg.file)
+            }
+        }
+        status => Err(format!("ffmpeg did not finish cleanly ({status:?}): {}", read_log(log))),
+    };
+    for wav in &wavs {
+        let _ = std::fs::remove_file(wav);
+    }
+    if result.is_err() {
+        // A partially written MP4 without its index is unplayable.
+        let _ = std::fs::remove_file(&seg.video);
+    }
+    result.map(|()| seg.file)
+}
+
+/// Ends the current segment; the panel shows the paused time.
+fn pause(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<Recorder>();
+    let mut guard = state.running.lock().map_err(|e| e.to_string())?;
+    let Some(rec) = guard.as_mut() else { return Ok(()) };
+    let Some(seg) = rec.segment.take() else { return Ok(()) };
+    rec.elapsed += seg.started.elapsed();
+    let file = finish_segment(app, seg, &rec.log)?;
+    rec.done.push(file);
+    let elapsed_ms = rec.elapsed.as_millis() as u64;
+    drop(guard);
+    let _ = app.emit_to(BAR_LABEL, "recording-paused", elapsed_ms);
+    let _ = app.emit_to(FRAME_LABEL, "recording-paused", elapsed_ms);
+    Ok(())
+}
+
+/// Starts a new segment after a pause.
+fn resume(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<Recorder>();
+    let mut guard = state.running.lock().map_err(|e| e.to_string())?;
+    let Some(rec) = guard.as_mut() else { return Ok(()) };
+    if rec.segment.is_some() {
+        return Ok(());
+    }
+    let seg = start_segment(app, rec)?;
+    let mic = seg.audio.iter().any(|c| matches!(c.source, Source::Microphone));
+    let system = seg.audio.iter().any(|c| matches!(c.source, Source::System));
+    rec.segment = Some(seg);
+    // The panel counts from a start shifted back by the time already recorded.
+    let started = RecordingStarted { started_ms: now_ms() - rec.elapsed.as_millis() as u64, mic, system };
+    drop(guard);
     let _ = app.emit_to(BAR_LABEL, "recording-started", &started);
     let _ = app.emit_to(FRAME_LABEL, "recording-started", &started);
     Ok(())
@@ -298,33 +437,26 @@ pub fn stop(app: AppHandle) {
         fx.finish(&app);
     }
     std::thread::spawn(move || {
-        // Video and audio stop at the same moment: the mux aligns the tracks on their ends.
-        for c in &rec.audio {
-            c.request_stop();
+        let mut result = Ok(());
+        if let Some(seg) = rec.segment.take() {
+            match finish_segment(&app, seg, &rec.log) {
+                Ok(file) => rec.done.push(file),
+                Err(e) => result = Err(e),
+            }
         }
-        if let Some(stdin) = rec.child.stdin.as_mut() {
-            let _ = stdin.write_all(b"q");
-            let _ = stdin.flush();
-        }
-        drop(rec.child.stdin.take());
-        let wavs: Vec<PathBuf> = rec
-            .audio
-            .drain(..)
-            .filter_map(|c| {
-                let label = c.source.label();
-                c.finish().map_err(|e| eprintln!("{label}: {e}")).ok()
-            })
-            .collect();
-        let result = match wait_with_timeout(&mut rec.child, STOP_TIMEOUT) {
-            Some(s) if s.success() && rec.video.exists() => finish_file(&app, &rec, &wavs),
-            status => Err(format!("ffmpeg did not finish cleanly ({status:?}): {}", read_log(&rec.log))),
+        // Whatever was recorded before a failing last segment is still saved.
+        let saved = match rec.done.len() {
+            0 => Err(result.err().unwrap_or_else(|| "nothing recorded".into())),
+            _ => join_segments(&app, &rec),
         };
-        for wav in &wavs {
-            let _ = std::fs::remove_file(wav);
+        for part in &rec.done {
+            let _ = std::fs::remove_file(part);
         }
-        match result {
-            Ok(()) => {
-                let _ = app.emit("capture-added", &rec.out);
+        match saved {
+            Ok(files) => {
+                for file in files {
+                    let _ = app.emit("capture-added", &file);
+                }
                 crate::library::enforce_limit_async(&app);
                 if settings::load(&app).show_gallery_after_capture {
                     show_gallery(&app);
@@ -333,32 +465,56 @@ pub fn stop(app: AppHandle) {
             Err(msg) => {
                 eprintln!("{msg}");
                 let _ = app.emit("recording-error", &msg);
-                // A partially written MP4 without its index is unplayable.
-                let _ = std::fs::remove_file(&rec.video);
                 show_gallery(&app);
             }
         }
     });
 }
 
-/// Moves the recording into the library, muxing the audio tracks in when there are any.
-/// If muxing fails the silent video is kept rather than lost.
-fn finish_file(app: &AppHandle, rec: &Recording, wavs: &[PathBuf]) -> Result<(), String> {
-    if rec.video == rec.out {
-        return Ok(());
+/// Puts the finished segments in the library: one file, or, when they cannot be joined
+/// (an audio device lost between segments changes the streams), one file per segment.
+fn join_segments(app: &AppHandle, rec: &Recording) -> Result<Vec<PathBuf>, String> {
+    if let [only] = rec.done.as_slice() {
+        move_file(only, &rec.out)?;
+        return Ok(vec![rec.out.clone()]);
     }
-    if !wavs.is_empty() {
-        match mux(&rec.video, wavs, &rec.out) {
-            Ok(()) => {
-                let _ = std::fs::remove_file(&rec.video);
-                return Ok(());
+    match concat(&rec.ffmpeg, &rec.done, &rec.out, &rec.work.join(format!("{}-parts.txt", rec.stem))) {
+        Ok(()) => Ok(vec![rec.out.clone()]),
+        Err(e) => {
+            let _ = app.emit("recording-warning", format!("parts saved separately: {e}"));
+            let mut files = Vec::new();
+            for (i, part) in rec.done.iter().enumerate() {
+                let to = rec.out.with_file_name(format!("{}-part{}.mp4", rec.stem, i + 1));
+                move_file(part, &to)?;
+                files.push(to);
             }
-            Err(e) => {
-                let _ = app.emit("recording-warning", format!("audio not added: {e}"));
-            }
+            Ok(files)
         }
     }
-    move_file(&rec.video, &rec.out)
+}
+
+/// Joins MP4s with identical streams without re-encoding (ffmpeg concat demuxer).
+fn concat(ffmpeg: &Path, parts: &[PathBuf], out: &Path, list: &Path) -> Result<(), String> {
+    let text: String = parts
+        .iter()
+        .map(|p| format!("file '{}'\n", p.to_string_lossy().replace('\\', "/").replace('\'', "'\\''")))
+        .collect();
+    std::fs::write(list, text).map_err(|e| format!("{}: {e}", list.display()))?;
+    let output = helper_command(ffmpeg)
+        .args(["-hide_banner", "-loglevel", "warning", "-y", "-f", "concat", "-safe", "0", "-i"])
+        .arg(list)
+        .args(["-c", "copy", "-movflags", "+faststart"])
+        .arg(out)
+        .output()
+        .map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(list);
+    let output = output?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let _ = std::fs::remove_file(out);
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+    }
 }
 
 fn move_file(from: &Path, to: &Path) -> Result<(), String> {
@@ -431,10 +587,15 @@ pub fn cancel(app: AppHandle) {
     if let Some(fx) = rec.click_fx.take() {
         fx.finish(&app);
     }
-    let _ = rec.child.kill();
-    let _ = rec.child.wait();
-    discard_audio(std::mem::take(&mut rec.audio));
-    let _ = std::fs::remove_file(&rec.video);
+    if let Some(mut seg) = rec.segment.take() {
+        let _ = seg.child.kill();
+        let _ = seg.child.wait();
+        discard_audio(std::mem::take(&mut seg.audio));
+        let _ = std::fs::remove_file(&seg.video);
+    }
+    for part in &rec.done {
+        let _ = std::fs::remove_file(part);
+    }
 }
 
 fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Option<std::process::ExitStatus> {
@@ -746,5 +907,40 @@ fn close_windows(app: &AppHandle) {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.destroy();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Joins two short clips made with the recorder's encoder settings. Needs ffmpeg
+    /// (`SCREENCUP_FFMPEG` or PATH); skipped without it.
+    #[test]
+    fn concat_joins_segments() {
+        let Ok(ffmpeg) = ffmpeg_exe() else { return };
+        let dir = std::env::temp_dir().join(format!("screencup-concat-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let parts: Vec<PathBuf> = (0..2)
+            .map(|i| {
+                let part = dir.join(format!("part{i}.mp4"));
+                let status = helper_command(&ffmpeg)
+                    .args(["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i"])
+                    .arg("testsrc=size=320x240:rate=30:duration=1")
+                    .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=1"])
+                    .args(encoder_args(&ffmpeg))
+                    .args(["-c:a", "aac", "-shortest"])
+                    .arg(&part)
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+                part
+            })
+            .collect();
+        let out = dir.join("joined.mp4");
+        concat(&ffmpeg, &parts, &out, &dir.join("list.txt")).unwrap();
+        let secs = media_seconds(&ffmpeg, &out).unwrap();
+        assert!((1.8..2.3).contains(&secs), "joined length {secs}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

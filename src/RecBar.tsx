@@ -2,7 +2,7 @@ import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode,
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Crop, Mic, MicOff, MousePointerClick, Move, Settings, Volume2, VolumeX, X } from "lucide-react";
+import { Crop, Mic, MicOff, MousePointerClick, Move, Pause, Play, Settings, Volume2, VolumeX, X } from "lucide-react";
 import { patchSettings, type SettingsData } from "./Settings";
 import { t } from "./i18n";
 
@@ -34,22 +34,35 @@ export function RecBar() {
   const [started, setStarted] = useState<Started | null>(null);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
+  /** Recorded time while paused (`recording-paused`); null while recording. */
+  const [pausedMs, setPausedMs] = useState<number | null>(null);
 
   useEffect(() => {
     invoke<SettingsData>("get_settings").then(setSettings);
     const offSettings = listen<SettingsData>("settings-changed", (e) => setSettings(e.payload));
-    const offStarted = listen<Started>("recording-started", (e) => setStarted(e.payload));
+    const offStarted = listen<Started>("recording-started", (e) => {
+      setStarted(e.payload);
+      setPausedMs(null);
+    });
+    const offPaused = listen<number>("recording-paused", (e) => setPausedMs(e.payload));
     return () => {
       offSettings.then((f) => f());
       offStarted.then((f) => f());
+      offPaused.then((f) => f());
     };
   }, []);
 
   useEffect(() => {
-    if (!started) return;
+    if (!started || pausedMs !== null) return;
     const t = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(t);
-  }, [started]);
+  }, [started, pausedMs]);
+
+  /** Pause / resume: the backend ends or starts a segment, which takes a moment. */
+  const pauseOrResume = () => {
+    setBusy(true);
+    invoke(pausedMs === null ? "pause_recording" : "resume_recording").finally(() => setBusy(false));
+  };
 
   const record = () => {
     setBusy(true);
@@ -58,14 +71,23 @@ export function RecBar() {
   const toggle = (patch: Partial<SettingsData>) => patchSettings(patch);
 
   if (started) {
-    const secs = Math.max(0, Math.floor((now - started.startedMs) / 1000));
+    const paused = pausedMs !== null;
+    const secs = Math.max(0, Math.floor((paused ? pausedMs : now - started.startedMs) / 1000));
     const time = `${pad(Math.floor(secs / 3600))}:${pad(Math.floor(secs / 60) % 60)}:${pad(secs % 60)}`;
     return (
       <div className="recbar" data-tauri-drag-region>
         <button className="rec-main stop" onClick={() => invoke("stop_recording")} title={t("rec.stopAndSave")}>
           <span className="rec-square" />
         </button>
-        <span className="rec-dot" data-tauri-drag-region />
+        <button
+          className="rec-pause"
+          onClick={pauseOrResume}
+          disabled={busy}
+          title={paused ? t("rec.resume") : t("rec.pause")}
+        >
+          {paused ? <Play size={18} fill="currentColor" /> : <Pause size={18} fill="currentColor" />}
+        </button>
+        <span className={paused ? "rec-dot paused" : "rec-dot"} data-tauri-drag-region />
         <span className="rec-time" data-tauri-drag-region>
           {time}
         </span>
@@ -151,15 +173,21 @@ const areaSize = (margin: number) => ({
 export function RecFrame({ width, height, margin, corner, grip }: FrameProps) {
   const [size, setSize] = useState({ width, height });
   const [recording, setRecording] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.add("clickfx");
     const onResize = () => setSize(areaSize(margin));
     window.addEventListener("resize", onResize);
-    const off = listen("recording-started", () => setRecording(true));
+    const off = listen("recording-started", () => {
+      setRecording(true);
+      setPaused(false);
+    });
+    const offPaused = listen("recording-paused", () => setPaused(true));
     return () => {
       window.removeEventListener("resize", onResize);
       off.then((f) => f());
+      offPaused.then((f) => f());
     };
   }, [margin]);
 
@@ -172,7 +200,7 @@ export function RecFrame({ width, height, margin, corner, grip }: FrameProps) {
   const vars = { "--m": `${margin}px`, "--c": `${corner}px`, "--g": `${grip}px` } as CSSProperties;
 
   return (
-    <div className={recording ? "recframe recording" : "recframe"} style={vars}>
+    <div className={recording ? (paused ? "recframe recording paused" : "recframe recording") : "recframe"} style={vars}>
       <div className="recframe-line" />
       {!recording && (
         <>

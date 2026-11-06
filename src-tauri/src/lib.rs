@@ -159,6 +159,8 @@ pub fn run() {
             open_editor,
             recorder::toggle_recording,
             recorder::stop_recording,
+            recorder::pause_recording,
+            recorder::resume_recording,
             recorder::cancel_recording,
             recorder::start_prepared,
             recorder::reselect_region,

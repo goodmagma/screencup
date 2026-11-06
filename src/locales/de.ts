@@ -181,4 +181,6 @@ export const de: Record<Key, string> = {
   "ocr.copied": "Text in die Zwischenablage kopiert ({count} Zeichen)",
   "ocr.none": "Kein Text im Bild gefunden",
   "ocr.failed": "Texterkennung fehlgeschlagen: {error}",
+  "rec.pause": "Pausieren",
+  "rec.resume": "Aufzeichnung fortsetzen",
 };

@@ -1249,3 +1249,32 @@ html.clickfx body {
   line-height: 1.25;
   field-sizing: fixed;
 }
+
+/* --- recording pause ----------------------------------------------------------------------- */
+
+.rec-pause {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #3a3a3a;
+  color: #fff;
+}
+
+.rec-pause:hover:not(:disabled) {
+  background: #4a4a4a;
+}
+
+/* Paused: the dot stops blinking and turns amber, like the frame. */
+.rec-dot.paused {
+  background: #ffc53d;
+  animation: none;
+}
+
+.recframe.paused .recframe-line {
+  border-color: #ffc53d;
+}

@@ -186,6 +186,8 @@ export const it = {
   "ocr.copied": "Testo copiato negli appunti ({count} caratteri)",
   "ocr.none": "Nessun testo trovato nell'immagine",
   "ocr.failed": "Riconoscimento del testo non riuscito: {error}",
+  "rec.pause": "Metti in pausa",
+  "rec.resume": "Riprendi la registrazione",
 };
 
 export type Key = keyof typeof it;

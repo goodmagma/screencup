@@ -181,4 +181,6 @@ export const pt: Record<Key, string> = {
   "ocr.copied": "Texto copiado para a área de transferência ({count} caracteres)",
   "ocr.none": "Nenhum texto encontrado na imagem",
   "ocr.failed": "Falha no reconhecimento de texto: {error}",
+  "rec.pause": "Pausar",
+  "rec.resume": "Retomar a gravação",
 };

@@ -181,5 +181,7 @@ export const en: Record<Key, string> = {
   "ocr.copied": "Text copied to the clipboard ({count} characters)",
   "ocr.none": "No text found in the image",
   "ocr.failed": "Text recognition failed: {error}",
+  "rec.pause": "Pause",
+  "rec.resume": "Resume recording",
 };
 

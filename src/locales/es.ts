@@ -181,4 +181,6 @@ export const es: Record<Key, string> = {
   "ocr.copied": "Texto copiado al portapapeles ({count} caracteres)",
   "ocr.none": "No se encontró texto en la imagen",
   "ocr.failed": "El reconocimiento de texto ha fallado: {error}",
+  "rec.pause": "Pausar",
+  "rec.resume": "Reanudar la grabación",
 };
