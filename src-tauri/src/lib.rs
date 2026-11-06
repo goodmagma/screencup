@@ -176,6 +176,7 @@ pub fn run() {
             library::list_captures,
             library::delete_captures,
             library::drag_captures,
+            library::open_capture_with,
             edits::read_edit_source,
             edits::load_annotations,
             edits::save_annotations,

@@ -31,6 +31,9 @@ type RecordKind = "region" | "screen";
 /** Pointer travel, in CSS pixels, before a press on a tile starts dragging it out. */
 const DRAG_START = 6;
 
+/** "Open with…" uses a Windows dialog; see `open_capture_with` in src-tauri/src/library.rs. */
+const IS_WINDOWS = navigator.userAgent.includes("Windows");
+
 const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 const win = getCurrentWindow();
 
@@ -187,6 +190,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   const record = (kind: RecordKind) => invoke("toggle_recording", { kind });
   const isVideo = (name: string) => captures.find((c) => c.name === name)?.video ?? false;
   const open = (name: string) => invoke("open_capture", { name }).catch((e) => notify(String(e)));
+  const openWith = (name: string) => invoke("open_capture_with", { name }).catch((e) => notify(String(e)));
   const saveAs = (name: string) =>
     invoke<string | null>("export_capture", { name })
       .then((path) => path && notify(t("editor.exported", { path })))
@@ -278,6 +282,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       { label: video ? t("gallery.play") : t("gallery.edit"), onSelect: () => edit(name) },
       { label: t("common.copyToClipboard"), onSelect: () => copy(name), disabled: video },
       { label: t("gallery.openDefault"), onSelect: () => open(name) },
+      ...(IS_WINDOWS ? [{ label: t("gallery.openWith"), onSelect: () => openWith(name) }] : []),
       { label: t("gallery.saveAs"), onSelect: () => saveAs(name), disabled: video },
       { label: t("gallery.reveal"), onSelect: () => reveal(name) },
       ...shareActions([name]),

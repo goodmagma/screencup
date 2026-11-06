@@ -172,4 +172,5 @@ export const de: Record<Key, string> = {
   "share.expires": "läuft ab {date}",
   "share.permanentShort": "dauerhaft",
   "share.selectFirst": "Wähle zuerst eine oder mehrere Aufnahmen aus.",
+  "gallery.openWith": "Öffnen mit…",
 };

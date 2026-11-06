@@ -262,3 +262,34 @@ fn drag_preview<R: Runtime>(app: &AppHandle<R>, name: &str) -> Option<Vec<u8>> {
     small.write_to(&mut Cursor::new(&mut png), ImageFormat::Png).ok()?;
     Some(png)
 }
+
+/// "Open with…": the system dialog listing the apps that can open the capture. Windows
+/// only; the gallery hides the entry elsewhere.
+#[tauri::command]
+pub async fn open_capture_with(window: tauri::WebviewWindow, name: String) -> Result<(), String> {
+    let path = resolve(window.app_handle(), &name)?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::{OAIF_EXEC, OPENASINFO, SHOpenWithDialog};
+
+        let parent = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
+        // A thread of its own: the dialog may run a modal loop.
+        std::thread::spawn(move || {
+            let file: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+            let info = OPENASINFO { pcszFile: file.as_ptr(), oaifInFlags: OAIF_EXEC, ..Default::default() };
+            // SAFETY: `file` is a NUL-terminated path that outlives the call.
+            let hr = unsafe { SHOpenWithDialog(parent as _, &info) };
+            // Cancelling returns an error code too; only log it.
+            if hr < 0 {
+                eprintln!("open with: HRESULT {hr:#x}");
+            }
+        });
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err("not supported on this system".into())
+    }
+}

@@ -177,6 +177,7 @@ export const it = {
   "share.expires": "scade {date}",
   "share.permanentShort": "permanente",
   "share.selectFirst": "Seleziona prima una o più catture.",
+  "gallery.openWith": "Apri con…",
 };
 
 export type Key = keyof typeof it;

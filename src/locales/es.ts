@@ -172,4 +172,5 @@ export const es: Record<Key, string> = {
   "share.expires": "caduca {date}",
   "share.permanentShort": "permanente",
   "share.selectFirst": "Selecciona primero una o más capturas.",
+  "gallery.openWith": "Abrir con…",
 };

@@ -172,5 +172,6 @@ export const en: Record<Key, string> = {
   "share.expires": "expires {date}",
   "share.permanentShort": "permanent",
   "share.selectFirst": "Select one or more captures first.",
+  "gallery.openWith": "Open with…",
 };
 
