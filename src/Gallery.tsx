@@ -2,7 +2,7 @@ import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Camera, CloudUpload, Info, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
+import { Camera, CloudUpload, Info, Link2, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
 import { formatAccelerator, patchSettings, type SettingsData } from "./Settings";
 import { t } from "./i18n";
 import { BigButton, Menu, type MenuItem } from "./ui";
@@ -14,6 +14,20 @@ interface Capture {
   modified_ms: number;
   video: boolean;
 }
+
+/** Mirrors `Service` in src-tauri/src/share.rs. */
+type Service = "litterbox" | "catbox";
+
+/** Mirrors `Share` in src-tauri/src/share.rs. */
+interface Share {
+  name: string;
+  url: string;
+  service: Service;
+  uploaded_ms: number;
+  expires_ms: number | null;
+}
+
+const HOSTS: Record<Service, string> = { litterbox: "litterbox.catbox.moe", catbox: "catbox.moe" };
 
 /** Mirrors `CaptureKind` in src-tauri/src/capture.rs. */
 type CaptureKind = "region" | "screen" | "all";
@@ -43,6 +57,73 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   };
   const [context, setContext] = useState<{ x: number; y: number; name: string } | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
+  /** Live shared links, newest first. */
+  const [shares, setShares] = useState<Share[]>([]);
+  /** Upload waiting for the one-time "links are public" confirmation. */
+  const [askShare, setAskShare] = useState<{ names: string[]; service: Service } | null>(null);
+  const [dontAsk, setDontAsk] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const refreshShares = useCallback(() => invoke<Share[]>("list_shares").then(setShares).catch(() => {}), []);
+  useEffect(() => {
+    refreshShares();
+  }, [refreshShares]);
+
+  /** Newest live link of a capture, if any. */
+  const linkOf = (name: string) => shares.find((s) => s.name === name)?.url;
+
+  const copyLinks = (urls: string[]) =>
+    invoke("copy_text", { text: urls.join("\n") })
+      .then(() => notify(urls.length === 1 ? t("share.copied") : t("share.copiedMany", { count: urls.length })))
+      .catch((e) => notify(String(e), true));
+
+  /** Uploads one by one, then copies every link obtained. */
+  const upload = async (names: string[], service: Service) => {
+    setUploading(true);
+    notify(t("share.uploading"));
+    const urls: string[] = [];
+    try {
+      for (const name of names) {
+        try {
+          urls.push((await invoke<Share>("share_capture", { name, service })).url);
+        } catch (e) {
+          notify(t("share.failed", { error: String(e) }), true);
+        }
+      }
+    } finally {
+      setUploading(false);
+      refreshShares();
+    }
+    if (urls.length) await copyLinks(urls);
+  };
+
+  /** Asks once that links are public, then uploads. */
+  const share = (names: string[], service: Service = settings?.share_service ?? "litterbox") => {
+    if (names.length === 0 || uploading) return;
+    if (settings?.share_confirmed) upload(names, service);
+    else {
+      setDontAsk(false);
+      setAskShare({ names, service });
+    }
+  };
+
+  const confirmShare = () => {
+    if (!askShare) return;
+    if (dontAsk) patchSettings({ share_confirmed: true }).catch((e) => notify(String(e)));
+    upload(askShare.names, askShare.service);
+    setAskShare(null);
+  };
+
+  const hours = settings?.share_expiry_hours ?? 24;
+  /** Share entries for menus: both hosts, plus the existing link when there is one. */
+  const shareActions = (names: string[]): MenuItem[] => {
+    const link = names.length === 1 ? linkOf(names[0]) : undefined;
+    return [
+      { label: t("share.temporary", { hours }), onSelect: () => share(names, "litterbox"), disabled: uploading },
+      { label: t("share.permanent"), onSelect: () => share(names, "catbox"), disabled: uploading },
+      ...(link ? [{ label: t("share.copyLink"), onSelect: () => copyLinks([link]) }] : []),
+    ];
+  };
 
   useEffect(() => {
     invoke<SettingsData>("get_settings").then(setSettings).catch((e) => notify(String(e)));
@@ -173,12 +254,14 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       { label: t("common.copyToClipboard"), onSelect: () => copy(name), disabled: video },
       { label: t("gallery.openDefault"), onSelect: () => open(name) },
       { label: t("gallery.reveal"), onSelect: () => reveal(name) },
+      ...shareActions([name]),
       { label: t("common.delete"), onSelect: () => remove([name]), danger: true },
     ];
   };
 
   /** Context menu for a multiple selection: only what applies to all of them. */
   const multiActions = (names: string[]): MenuItem[] => [
+    ...shareActions(names),
     { label: t("gallery.deleteMany", { count: names.length }), onSelect: () => remove(names), danger: true },
   ];
 
@@ -240,6 +323,11 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
                     <Play size={18} fill="currentColor" />
                   </span>
                 )}
+                {linkOf(c.name) && (
+                  <span className="link-badge" title={linkOf(c.name)}>
+                    <Link2 size={14} />
+                  </span>
+                )}
               </div>
               <figcaption>{c.name}</figcaption>
             </figure>
@@ -291,21 +379,37 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
           icon={<CloudUpload size={28} />}
           label={t("gallery.publish")}
           ring="#2d8cff"
-          disabled={!selected}
-          onClick={() => selected && copy(selected)}
-          menu={
-            selected
-              ? [
-                  { label: t("common.copyToClipboard"), onSelect: () => copy(selected) },
-                  { label: t("gallery.reveal"), onSelect: () => reveal(selected) },
-                  { label: t("gallery.cloudSoon"), onSelect: () => {}, disabled: true },
-                ]
-              : undefined
-          }
+          disabled={selection.length === 0 || uploading}
+          onClick={() => share(selection)}
+          menu={selection.length > 0 ? shareActions(selection) : undefined}
         />
         <div className="spacer" />
         <BigButton icon={<X size={28} />} label={t("common.close")} ring="#f76b15" onClick={() => win.hide()} />
       </footer>
+
+      {askShare && (
+        <div className="modal-backdrop" style={{ position: "fixed" }}>
+          <div className="modal share-modal">
+            <h3>{t("share.confirmTitle")}</h3>
+            <p>
+              {t("share.confirmText", { host: HOSTS[askShare.service] })}{" "}
+              {askShare.service === "litterbox"
+                ? t("share.confirmTemporary", { hours })
+                : t("share.confirmPermanent")}
+            </p>
+            <label className="setting-check">
+              <input type="checkbox" checked={dontAsk} onChange={(e) => setDontAsk(e.target.checked)} />
+              <span>{t("share.dontAsk")}</span>
+            </label>
+            <div className="modal-buttons">
+              <button onClick={confirmShare}>{t("share.upload")}</button>
+              <button className="ghost" onClick={() => setAskShare(null)}>
+                {t("common.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {context && (
         <Menu

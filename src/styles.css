@@ -1006,3 +1006,31 @@ html.clickfx body {
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* --- sharing ------------------------------------------------------------------------------ */
+
+.link-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2d8cff;
+  color: #fff;
+}
+
+.share-modal {
+  max-width: 420px;
+}
+
+.share-modal h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.share-modal .setting-check {
+  margin-bottom: 14px;
+}

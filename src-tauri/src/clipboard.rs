@@ -28,6 +28,15 @@ pub fn copy_image<R: Runtime>(app: &AppHandle<R>, img: &RgbaImage) -> Result<(),
         .map_err(|e| e.to_string())
 }
 
+pub fn copy_text<R: Runtime>(app: &AppHandle<R>, text: &str) -> Result<(), String> {
+    let state = app.state::<Clipboard>();
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    if guard.is_none() {
+        *guard = Some(arboard::Clipboard::new().map_err(|e| e.to_string())?);
+    }
+    guard.as_mut().expect("clipboard initialised above").set_text(text).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn copy_capture(app: AppHandle, name: String) -> Result<(), String> {
     if library::is_video(std::path::Path::new(&name)) {

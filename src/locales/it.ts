@@ -35,8 +35,7 @@ export const it = {
   "gallery.recordVideo": "Registra video",
   "gallery.recordRegion": "Registra una regione",
   "gallery.recordScreen": "Registra lo schermo",
-  "gallery.publish": "Pubblica",
-  "gallery.cloudSoon": "Cloud (in arrivo)",
+  "gallery.publish": "Condividi",
 
   // editor
   "editor.copyAndExit": "Copia & Esci",
@@ -125,6 +124,27 @@ export const it = {
   "about.licenses": "Licenze",
   "about.license": "Licenza MIT",
   "about.ffmpeg": "Include ffmpeg, distribuito con la propria licenza.",
+
+  "share.uploading": "Caricamento in corso…",
+  "share.copied": "Link copiato negli appunti",
+  "share.copiedMany": "{count} link copiati negli appunti",
+  "share.failed": "Upload non riuscito: {error}",
+  "share.temporary": "Link temporaneo ({hours} h)",
+  "share.permanent": "Link permanente",
+  "share.copyLink": "Copia il link",
+  "share.confirmTitle": "Condividere online?",
+  "share.confirmText": "Il file viene caricato su {host}. Chiunque abbia il link potrà vederlo.",
+  "share.confirmTemporary": "Il link scade dopo {hours} ore.",
+  "share.confirmPermanent": "Il link è permanente e non si potrà cancellare.",
+  "share.dontAsk": "Non chiedere più",
+  "share.upload": "Carica",
+  "settings.sharing": "Condivisione",
+  "settings.shareService": "Servizio predefinito",
+  "settings.shareLitterbox": "Litterbox (link temporaneo)",
+  "settings.shareCatbox": "Catbox (link permanente)",
+  "settings.shareExpiry": "Durata dei link temporanei",
+  "settings.shareHours": "{hours} h",
+  "settings.shareHint": "I link sono pubblici: chiunque li abbia può vedere il file. Servizi anonimi, senza account.",
 };
 
 export type Key = keyof typeof it;

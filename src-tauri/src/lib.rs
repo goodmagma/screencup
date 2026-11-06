@@ -12,6 +12,7 @@ mod i18n;
 mod library;
 mod recorder;
 mod settings;
+mod share;
 
 use capture::CaptureKind;
 use recorder::RecordKind;
@@ -138,6 +139,9 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
+            share::share_capture,
+            share::list_shares,
+            share::copy_text,
             i18n::get_language,
             about::about_info,
             about::open_about,

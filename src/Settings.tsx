@@ -16,8 +16,12 @@ export interface SettingsData {
   hotkeys: Hotkeys;
   /** 0 = no limit. */
   max_captures: number;
-  /** "auto" (system language), "it" or "en". */
+  /** "auto" (system language) or a language code. */
   language: string;
+  /** Default host for sharing: "litterbox" (temporary link) or "catbox" (permanent). */
+  share_service: "litterbox" | "catbox";
+  share_expiry_hours: number;
+  share_confirmed: boolean;
 }
 
 /**
@@ -55,6 +59,9 @@ const LANGUAGES = [
   { value: "it", label: "Italiano" },
   { value: "pt", label: "Português" },
 ];
+
+/** Must match `EXPIRY_HOURS` in src-tauri/src/share.rs. */
+export const SHARE_EXPIRIES = [1, 12, 24, 72];
 
 /** Must match `FRAMERATES` in src-tauri/src/settings.rs. */
 const FRAMERATES = [15, 30, 60];
@@ -321,6 +328,33 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
             ))}
           </ul>
         )}
+      </Section>
+
+      <Section title={t("settings.sharing")}>
+        <label className="setting-select">
+          <span>{t("settings.shareService")}</span>
+          <select
+            value={settings.share_service}
+            onChange={(e) => update({ share_service: e.target.value as SettingsData["share_service"] })}
+          >
+            <option value="litterbox">{t("settings.shareLitterbox")}</option>
+            <option value="catbox">{t("settings.shareCatbox")}</option>
+          </select>
+        </label>
+        <label className="setting-select">
+          <span>{t("settings.shareExpiry")}</span>
+          <select
+            value={settings.share_expiry_hours}
+            onChange={(e) => update({ share_expiry_hours: Number(e.target.value) })}
+          >
+            {SHARE_EXPIRIES.map((h) => (
+              <option key={h} value={h}>
+                {t("settings.shareHours", { hours: h })}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="hint">{t("settings.shareHint")}</p>
       </Section>
 
       <Section title={t("settings.recording")}>
