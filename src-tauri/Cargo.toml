@@ -13,6 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 arboard = "3.7.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 cpal = "0.18.2"
+drag = "2.1.1"
 hound = "3.5.1"
 percent-encoding = "2.3.2"
 serde = { version = "1.0.229", features = ["derive"] }

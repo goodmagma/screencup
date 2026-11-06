@@ -225,3 +225,39 @@ pub fn thumbnail_protocol<R: Runtime>(
         responder.respond(response.expect("valid thumbnail response"));
     });
 }
+
+/// Longest side of the picture under the cursor while dragging captures out, in pixels.
+const DRAG_PREVIEW_SIZE: u32 = 160;
+
+/// Drags captures out of the gallery as files, to drop them into other apps (an image
+/// editor, a chat, Explorer). It is a native OS drag (OLE on Windows): the webview's own
+/// drag and drop only works inside the page. Files are offered as a copy, the library keeps
+/// them. Async, because the drag runs a modal loop on the main thread.
+#[tauri::command]
+pub async fn drag_captures(window: tauri::WebviewWindow, names: Vec<String>) -> Result<(), String> {
+    let app = window.app_handle().clone();
+    let paths = names.iter().map(|n| resolve(&app, n)).collect::<Result<Vec<_>, _>>()?;
+    let preview = names.first().and_then(|n| drag_preview(&app, n)).unwrap_or_default();
+    let (done, wait) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let result = drag::start_drag(
+            &window,
+            drag::DragItem::Files(paths),
+            drag::Image::Raw(preview),
+            |_, _| {},
+            drag::Options { skip_animatation_on_cancel_or_failure: false, mode: drag::DragMode::Copy },
+        );
+        let _ = done.send(result.map_err(|e| e.to_string()));
+    })
+    .map_err(|e| e.to_string())?;
+    wait.recv().map_err(|e| e.to_string())?
+}
+
+/// Small PNG of the capture's thumbnail for the drag cursor.
+fn drag_preview<R: Runtime>(app: &AppHandle<R>, name: &str) -> Option<Vec<u8>> {
+    let thumb = xcap::image::load_from_memory(&thumbnail(app, name).ok()?).ok()?;
+    let small = thumb.thumbnail(DRAG_PREVIEW_SIZE, DRAG_PREVIEW_SIZE);
+    let mut png = Vec::new();
+    small.write_to(&mut Cursor::new(&mut png), ImageFormat::Png).ok()?;
+    Some(png)
+}

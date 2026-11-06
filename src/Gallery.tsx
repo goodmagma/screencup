@@ -1,4 +1,4 @@
-import { type MouseEvent, useCallback, useEffect, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -19,6 +19,9 @@ type CaptureKind = "region" | "screen" | "all";
 
 /** Mirrors `RecordKind` in src-tauri/src/recorder.rs. */
 type RecordKind = "region" | "screen";
+
+/** Pointer travel, in CSS pixels, before a press on a tile starts dragging it out. */
+const DRAG_START = 6;
 
 const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 const win = getCurrentWindow();
@@ -104,6 +107,28 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
     [notify, refresh],
   );
 
+  /** Where a left press on a tile started; moving past DRAG_START turns it into a file drag. */
+  const press = useRef<{ name: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: globalThis.MouseEvent) => {
+      const p = press.current;
+      if (!p || Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_START) return;
+      press.current = null;
+      // The whole selection when the tile is part of it, else just that tile.
+      const names = selection.includes(p.name) ? selection : [p.name];
+      if (!selection.includes(p.name)) selectOnly(p.name);
+      invoke("drag_captures", { names }).catch((err) => notify(String(err)));
+    };
+    const onUp = () => (press.current = null);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  });
+
   /** Click with Explorer-style modifiers: Ctrl toggles, Shift selects a range. */
   const clickTile = (name: string, e: MouseEvent) => {
     if (e.shiftKey && anchor) {
@@ -187,6 +212,9 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
                 clickTile(c.name, e);
               }}
               onDoubleClick={() => edit(c.name)}
+              onMouseDown={(e) => {
+                if (e.button === 0) press.current = { name: c.name, x: e.clientX, y: e.clientY };
+              }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 if (!selection.includes(c.name)) selectOnly(c.name);
@@ -194,7 +222,12 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
               }}
             >
               <div className="tile-image">
-                <img src={`${convertFileSrc(c.name, "thumb")}?v=${c.modified_ms}`} alt="" loading="lazy" />
+                <img
+                  src={`${convertFileSrc(c.name, "thumb")}?v=${c.modified_ms}`}
+                  alt=""
+                  loading="lazy"
+                  draggable={false}
+                />
                 {c.video && (
                   <span className="play-badge">
                     <Play size={18} fill="currentColor" />

@@ -125,6 +125,7 @@ pub fn run() {
             clipboard::copy_capture,
             library::list_captures,
             library::delete_captures,
+            library::drag_captures,
             edits::read_edit_source,
             edits::load_annotations,
             edits::save_annotations,
