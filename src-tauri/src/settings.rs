@@ -27,6 +27,8 @@ pub struct Settings {
     pub show_clicks: bool,
     pub framerate: u32,
     pub hotkeys: Hotkeys,
+    /// Keep at most this many captures; older ones go to the trash. 0 = no limit.
+    pub max_captures: u32,
 }
 
 /// Global shortcuts as accelerator strings (e.g. `Control+Shift+PrintScreen`); empty = none.
@@ -51,6 +53,7 @@ impl Default for Settings {
             show_clicks: true,
             framerate: 30,
             hotkeys: Hotkeys::default(),
+            max_captures: 0,
         }
     }
 }
@@ -105,6 +108,7 @@ pub fn set_settings(app: AppHandle, mut settings: Settings) -> Result<Vec<String
         settings.framerate = Settings::default().framerate;
     }
     save(&app, &settings)?;
+    crate::library::enforce_limit_async(&app);
     // Gallery and settings window both edit settings; each refreshes on this event.
     let _ = app.emit("settings-changed", &settings);
     Ok(hotkeys::apply(&app, &settings.hotkeys))

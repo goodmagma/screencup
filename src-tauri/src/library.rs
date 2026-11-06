@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use tauri::http::{Request, Response, header::CONTENT_TYPE};
-use tauri::{AppHandle, Manager, Runtime, UriSchemeContext, UriSchemeResponder};
+use tauri::{AppHandle, Emitter, Manager, Runtime, UriSchemeContext, UriSchemeResponder};
 use xcap::image::{ImageFormat, RgbaImage};
 
 /// Longest side of a gallery thumbnail, in pixels (cards are ~200 CSS px, so 2x DPI fits).
@@ -87,50 +87,91 @@ fn modified(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-#[tauri::command]
-pub fn list_captures(app: AppHandle) -> Result<Vec<Capture>, String> {
-    let Ok(entries) = std::fs::read_dir(dir(&app)?) else {
-        return Ok(Vec::new());
-    };
-    let mut captures: Vec<Capture> = entries
+/// Library files the gallery lists (screenshots and recordings), as (name, path).
+fn capture_entries(dir: &Path) -> impl Iterator<Item = (String, PathBuf)> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
         .flatten()
         .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|x| x.eq_ignore_ascii_case(IMAGE_EXT) || x.eq_ignore_ascii_case(VIDEO_EXT))
+        .map(|e| (e.file_name().to_string_lossy().into_owned(), e.path()))
+        .filter(|(_, p)| {
+            p.extension().is_some_and(|x| x.eq_ignore_ascii_case(IMAGE_EXT) || x.eq_ignore_ascii_case(VIDEO_EXT))
         })
-        .map(|e| {
-            let modified_ms = modified(&e.path())
+}
+
+#[tauri::command]
+pub fn list_captures(app: AppHandle) -> Result<Vec<Capture>, String> {
+    let mut captures: Vec<Capture> = capture_entries(&dir(&app)?)
+        .map(|(name, path)| {
+            let modified_ms = modified(&path)
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map_or(0, |d| d.as_millis() as u64);
-            Capture {
-                name: e.file_name().to_string_lossy().into_owned(),
-                path: e.path(),
-                modified_ms,
-                video: is_video(&e.path()),
-            }
+            Capture { name, video: is_video(&path), path, modified_ms }
         })
         .collect();
     captures.sort_by_key(|c| std::cmp::Reverse(c.modified_ms));
     Ok(captures)
 }
 
-/// Moves a capture, with its original and annotations if it was edited, to the OS trash
-/// (recoverable) and drops its cached thumbnail.
+/// Moves captures, with their originals and annotations if they were edited, to the OS
+/// trash (recoverable) in one operation, and drops their cached thumbnails.
 #[tauri::command]
-pub fn delete_capture(app: AppHandle, name: String) -> Result<(), String> {
-    let originals = crate::edits::originals_dir(&app)?;
-    let files: Vec<PathBuf> =
-        [resolve(&app, &name)?, originals.join(&name), originals.join(format!("{name}.json"))]
-            .into_iter()
-            .filter(|p| p.exists())
-            .collect();
+pub fn delete_captures(app: AppHandle, names: Vec<String>) -> Result<(), String> {
+    trash_captures(&app, &names)
+}
+
+fn trash_captures<R: Runtime>(app: &AppHandle<R>, names: &[String]) -> Result<(), String> {
+    let originals = crate::edits::originals_dir(app)?;
+    let mut files = Vec::new();
+    for name in names {
+        files.extend(
+            [resolve(app, name)?, originals.join(name), originals.join(format!("{name}.json"))]
+                .into_iter()
+                .filter(|p| p.exists()),
+        );
+    }
+    if files.is_empty() {
+        return Ok(());
+    }
     trash::delete_all(files).map_err(|e| e.to_string())?;
-    if let Ok(thumbs) = thumbs_dir(&app) {
-        let _ = std::fs::remove_file(thumbs.join(&name));
+    if let Ok(thumbs) = thumbs_dir(app) {
+        for name in names {
+            let _ = std::fs::remove_file(thumbs.join(name));
+        }
     }
     Ok(())
+}
+
+/// Keeps at most `max_captures` (from the settings; 0 = no limit) captures in the library by
+/// moving the oldest to the trash. Age is the capture time in the timestamped file name,
+/// not the modification time, which editing bumps. Returns how many were removed.
+pub fn enforce_limit<R: Runtime>(app: &AppHandle<R>) -> Result<usize, String> {
+    let max = crate::settings::load(app).max_captures as usize;
+    if max == 0 {
+        return Ok(0);
+    }
+    let mut names: Vec<String> = capture_entries(&dir(app)?).map(|(name, _)| name).collect();
+    if names.len() <= max {
+        return Ok(0);
+    }
+    names.sort_unstable_by(|a, b| b.cmp(a));
+    let old = names.split_off(max);
+    trash_captures(app, &old)?;
+    Ok(old.len())
+}
+
+/// Runs `enforce_limit` off the calling thread (trashing can be slow) and tells the gallery
+/// to refresh when something was removed.
+pub fn enforce_limit_async<R: Runtime>(app: &AppHandle<R>) {
+    let app = app.clone();
+    std::thread::spawn(move || match enforce_limit(&app) {
+        Ok(0) => {}
+        Ok(_) => {
+            let _ = app.emit("capture-updated", ());
+        }
+        Err(e) => eprintln!("capture limit: {e}"),
+    });
 }
 
 pub fn load<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<RgbaImage, String> {

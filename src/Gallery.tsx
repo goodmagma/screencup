@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -25,7 +25,15 @@ const win = getCurrentWindow();
 
 export function Gallery({ notify }: { notify: (message: string) => void }) {
   const [captures, setCaptures] = useState<Capture[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  /** Selected capture names; the single-item actions use `selected`. */
+  const [selection, setSelection] = useState<string[]>([]);
+  /** Where a Shift+click range starts: the last plainly or Ctrl-clicked tile. */
+  const [anchor, setAnchor] = useState<string | null>(null);
+  const selected = selection.length === 1 ? selection[0] : null;
+  const selectOnly = (name: string | null) => {
+    setSelection(name ? [name] : []);
+    setAnchor(name);
+  };
   const [context, setContext] = useState<{ x: number; y: number; name: string } | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
 
@@ -52,7 +60,7 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
     const added = listen<string>("capture-added", (event) => {
       refresh();
       const name = baseName(event.payload);
-      setSelected(name);
+      selectOnly(name);
       notify(name.endsWith(".mp4") ? "Registrazione salvata" : "Catturata e copiata negli appunti");
     });
     const updated = listen("capture-updated", refresh);
@@ -84,23 +92,45 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
   );
 
   const remove = useCallback(
-    (name: string) =>
-      invoke("delete_capture", { name })
+    (names: string[]) =>
+      names.length > 0 &&
+      invoke("delete_captures", { names })
         .then(() => {
-          setSelected((s) => (s === name ? null : s));
-          notify("Spostata nel cestino");
+          setSelection((sel) => sel.filter((n) => !names.includes(n)));
+          notify(names.length === 1 ? "Spostata nel cestino" : `${names.length} catture spostate nel cestino`);
           return refresh();
         })
         .catch((e) => notify(String(e))),
     [notify, refresh],
   );
 
+  /** Click with Explorer-style modifiers: Ctrl toggles, Shift selects a range. */
+  const clickTile = (name: string, e: MouseEvent) => {
+    if (e.shiftKey && anchor) {
+      const names = captures.map((c) => c.name);
+      const [a, b] = [names.indexOf(anchor), names.indexOf(name)].sort((x, y) => x - y);
+      if (a >= 0) {
+        const range = names.slice(a, b + 1);
+        setSelection((sel) => (e.ctrlKey || e.metaKey ? [...new Set([...sel, ...range])] : range));
+        return;
+      }
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelection((sel) => (sel.includes(name) ? sel.filter((n) => n !== name) : [...sel, name]));
+      setAnchor(name);
+    } else selectOnly(name);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
       if (e.key === "Escape") win.hide();
+      else if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setSelection(captures.map((c) => c.name));
+      } else if (e.key === "Delete") remove(selection);
       if (!selected) return;
-      if (e.key === "Delete") remove(selected);
-      else if (e.key === "Enter") edit(selected);
+      if (e.key === "Enter") edit(selected);
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") copy(selected);
     };
     window.addEventListener("keydown", onKey);
@@ -114,9 +144,14 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
       { label: "Copia negli appunti", onSelect: () => copy(name), disabled: video },
       { label: "Apri con l'app predefinita", onSelect: () => open(name) },
       { label: "Mostra nella cartella", onSelect: () => reveal(name) },
-      { label: "Elimina", onSelect: () => remove(name), danger: true },
+      { label: "Elimina", onSelect: () => remove([name]), danger: true },
     ];
   };
+
+  /** Context menu for a multiple selection: only what applies to all of them. */
+  const multiActions = (names: string[]): MenuItem[] => [
+    { label: `Elimina ${names.length} catture`, onSelect: () => remove(names), danger: true },
+  ];
 
   return (
     <div className="gallery">
@@ -139,22 +174,22 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
         </div>
       </header>
 
-      <div className="gallery-grid" onClick={() => setSelected(null)}>
+      <div className="gallery-grid" onClick={() => selectOnly(null)}>
         {captures.length === 0 ? (
           <p className="empty">Nessuna cattura. Premi Stamp o usa il menu della tray icon.</p>
         ) : (
           captures.map((c) => (
             <figure
               key={c.name}
-              className={c.name === selected ? "tile selected" : "tile"}
+              className={selection.includes(c.name) ? "tile selected" : "tile"}
               onClick={(e) => {
                 e.stopPropagation();
-                setSelected(c.name);
+                clickTile(c.name, e);
               }}
               onDoubleClick={() => edit(c.name)}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setSelected(c.name);
+                if (!selection.includes(c.name)) selectOnly(c.name);
                 setContext({ x: e.clientX, y: e.clientY, name: c.name });
               }}
             >
@@ -234,7 +269,11 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
 
       {context && (
         <Menu
-          items={itemActions(context.name)}
+          items={
+            selection.length > 1 && selection.includes(context.name)
+              ? multiActions(selection)
+              : itemActions(context.name)
+          }
           onClose={() => setContext(null)}
           style={{ position: "fixed", left: context.x, top: context.y }}
         />

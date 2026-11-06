@@ -13,6 +13,8 @@ export interface SettingsData {
   show_clicks: boolean;
   framerate: number;
   hotkeys: Hotkeys;
+  /** 0 = no limit. */
+  max_captures: number;
 }
 
 /**
@@ -142,6 +144,37 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+const DEFAULT_MAX_CAPTURES = 500;
+const MIN_MAX_CAPTURES = 10;
+
+/**
+ * Applied on Enter or blur, not per keystroke: typing "500" passes through "5", which
+ * would already send all but five captures to the trash.
+ */
+function MaxCapturesInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const apply = () => {
+    const n = Math.max(MIN_MAX_CAPTURES, Math.floor(Number(text)) || DEFAULT_MAX_CAPTURES);
+    setText(String(n));
+    if (n !== value) onChange(n);
+  };
+  return (
+    <label className="setting-select">
+      <span>Numero massimo di catture (le eccedenti vanno nel cestino)</span>
+      <input
+        type="number"
+        min={MIN_MAX_CAPTURES}
+        step={50}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={apply}
+        onKeyDown={(e) => e.key === "Enter" && apply()}
+      />
+    </label>
+  );
+}
+
 export function SettingsWindow({ notify }: { notify: (message: string) => void }) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [autostart, setAutostart] = useState(false);
@@ -226,6 +259,14 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
           </button>
         </div>
         <p className="hint">Le catture già fatte restano nella cartella precedente.</p>
+        <Check
+          label="Elimina le catture più vecchie oltre un numero massimo"
+          checked={settings.max_captures > 0}
+          onChange={(v) => update({ max_captures: v ? DEFAULT_MAX_CAPTURES : 0 })}
+        />
+        {settings.max_captures > 0 && (
+          <MaxCapturesInput value={settings.max_captures} onChange={(v) => update({ max_captures: v })} />
+        )}
       </Section>
 
       <Section title="Scorciatoie da tastiera">

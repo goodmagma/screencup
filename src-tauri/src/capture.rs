@@ -47,6 +47,7 @@ pub fn capture(app: AppHandle, kind: CaptureKind) {
                     eprintln!("copy to clipboard failed: {e}");
                 }
                 let _ = app.emit("capture-added", &path);
+                crate::library::enforce_limit_async(&app);
                 if prefs.show_gallery_after_capture || gallery_was_visible {
                     show_gallery(&app);
                 }

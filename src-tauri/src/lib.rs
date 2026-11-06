@@ -124,7 +124,7 @@ pub fn run() {
             library::reveal_capture,
             clipboard::copy_capture,
             library::list_captures,
-            library::delete_capture,
+            library::delete_captures,
             edits::read_edit_source,
             edits::load_annotations,
             edits::save_annotations,
@@ -134,6 +134,7 @@ pub fn run() {
             if let Some(main) = app.get_webview_window("main") {
                 main.set_icon(small_icon())?;
             }
+            library::enforce_limit_async(app.handle());
             // Tray-only app on macOS: no Dock icon, no app menu bar.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);

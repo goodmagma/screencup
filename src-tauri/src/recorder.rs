@@ -306,6 +306,7 @@ pub fn stop(app: AppHandle) {
         match result {
             Ok(()) => {
                 let _ = app.emit("capture-added", &rec.out);
+                crate::library::enforce_limit_async(&app);
                 if settings::load(&app).show_gallery_after_capture {
                     show_gallery(&app);
                 }

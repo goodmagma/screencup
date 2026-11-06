@@ -247,12 +247,22 @@ export function Editor({ name, onClose, notify }: Props) {
     }
   };
 
-  const onStageMove = () => {
+  const onStageMove = (e: KonvaEventObject<MouseEvent>) => {
     const d = draftRef.current;
     if (!d) return;
     const { x, y } = pointer();
     if (d.kind === "arrow" || d.kind === "line") setDraft({ ...d, points: [d.points[0], d.points[1], x, y] });
-    else if (isBox(d)) setDraft({ ...d, w: x - d.x, h: y - d.y });
+    else if (isBox(d)) {
+      let w = x - d.x;
+      let h = y - d.y;
+      // Alt keeps width and height equal (square, circle), like graphics editors do.
+      if (e.evt.altKey) {
+        const side = Math.max(Math.abs(w), Math.abs(h));
+        w = (w < 0 ? -1 : 1) * side;
+        h = (h < 0 ? -1 : 1) * side;
+      }
+      setDraft({ ...d, w, h });
+    }
   };
 
   // Released anywhere, even outside the canvas. The new shape is selected right away.
@@ -403,6 +413,8 @@ export function Editor({ name, onClose, notify }: Props) {
             strokeWidth={s.width}
             cornerRadius={s.width}
             hitStrokeWidth={hit}
+            // Unfilled: only the outline is hit, so tools work inside the shape.
+            fillEnabled={false}
           />
         );
       case "ellipse":
@@ -419,6 +431,7 @@ export function Editor({ name, onClose, notify }: Props) {
             stroke={s.color}
             strokeWidth={s.width}
             hitStrokeWidth={hit}
+            fillEnabled={false}
           />
         );
       case "highlight":

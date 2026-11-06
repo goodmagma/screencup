@@ -775,13 +775,18 @@ button.size.active {
   padding: 8px 0 2px;
 }
 
-.setting-select select {
+.setting-select select,
+.setting-select input {
   padding: 4px 8px;
   background: var(--chrome-2);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
   font: inherit;
+}
+
+.setting-select input {
+  width: 90px;
 }
 
 .folder-row {
