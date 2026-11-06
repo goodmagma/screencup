@@ -4,6 +4,7 @@ description = "Cross-platform screen capture: tray app, gallery and editor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [lib]
 name = "screencup_lib"

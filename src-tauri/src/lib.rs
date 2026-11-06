@@ -1,6 +1,7 @@
 //! Screencup desktop app: lives in the tray, opens the capture gallery on click and runs
 //! captures from the tray menu, global hotkeys or the gallery toolbar.
 
+mod about;
 mod audio;
 mod capture;
 mod clickfx;
@@ -105,6 +106,10 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
+            about::about_info,
+            about::open_about,
+            about::open_licenses,
+            about::open_repository,
             open_editor,
             recorder::toggle_recording,
             recorder::stop_recording,
@@ -155,6 +160,7 @@ pub fn run() {
                     &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(app, "gallery", "Apri la galleria", true, None::<&str>)?,
                     &MenuItem::with_id(app, "settings", "Impostazioni...", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "about", "Informazioni su Screencup", true, None::<&str>)?,
                     &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(app, "quit", "Esci da Screencup", true, None::<&str>)?,
                 ],
@@ -177,6 +183,11 @@ pub fn run() {
                     "settings" => {
                         if let Err(e) = settings::show(app) {
                             eprintln!("settings window: {e}");
+                        }
+                    }
+                    "about" => {
+                        if let Err(e) = about::show(app) {
+                            eprintln!("about window: {e}");
                         }
                     }
                     "quit" => app.exit(0),

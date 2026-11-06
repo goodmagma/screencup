@@ -4,6 +4,7 @@ import { Gallery } from "./Gallery";
 import { ClickFx } from "./ClickFx";
 import { RecBar, RecFrame } from "./RecBar";
 import { SettingsWindow } from "./Settings";
+import { AboutWindow } from "./About";
 
 declare global {
   interface Window {
@@ -17,6 +18,8 @@ declare global {
     __SCREENCUP_SETTINGS__?: boolean;
     /** Set by `ClickFx::start` in src-tauri/src/clickfx.rs on the click highlight window. */
     __SCREENCUP_CLICKFX__?: boolean;
+    /** Set by `about::show` in src-tauri/src/about.rs on the About window. */
+    __SCREENCUP_ABOUT__?: boolean;
   }
 }
 
@@ -49,6 +52,8 @@ function MainWindow() {
         <EditorWindow name={editName} notify={notify} />
       ) : window.__SCREENCUP_SETTINGS__ ? (
         <SettingsWindow notify={notify} />
+      ) : window.__SCREENCUP_ABOUT__ ? (
+        <AboutWindow notify={notify} />
       ) : (
         <Gallery notify={notify} />
       )}

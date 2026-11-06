@@ -2,7 +2,7 @@ import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Camera, CloudUpload, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
+import { Camera, CloudUpload, Info, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
 import { patchSettings, type SettingsData } from "./Settings";
 import { BigButton, Menu, type MenuItem } from "./ui";
 
@@ -184,6 +184,9 @@ export function Gallery({ notify }: { notify: (message: string) => void }) {
         <img src="/tray-icon.svg" alt="" className="titlebar-icon" data-tauri-drag-region />
         <span data-tauri-drag-region>Screencup</span>
         <div className="titlebar-buttons">
+          <button onClick={() => invoke("open_about")} title="Informazioni su Screencup">
+            <Info size={15} />
+          </button>
           <button onClick={() => invoke("open_settings")} title="Impostazioni">
             <Settings size={15} />
           </button>
