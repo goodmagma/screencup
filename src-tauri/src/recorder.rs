@@ -694,7 +694,7 @@ fn input_args(a: Area, framerate: &str) -> Vec<String> {
 }
 
 /// Picks the best H.264 encoder this ffmpeg offers (probed once).
-fn encoder_args(ffmpeg: &Path) -> Vec<&'static str> {
+pub(crate) fn encoder_args(ffmpeg: &Path) -> Vec<&'static str> {
     static ENCODERS: OnceLock<String> = OnceLock::new();
     let list = ENCODERS.get_or_init(|| {
         helper_command(ffmpeg)

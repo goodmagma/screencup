@@ -57,6 +57,13 @@ pub fn reveal_capture(app: AppHandle, name: String) -> Result<(), String> {
     app.opener().reveal_item_in_dir(resolve(&app, &name)?).map_err(|e| e.to_string())
 }
 
+/// Drops the cached thumbnail of a capture whose file changed.
+pub fn forget_thumbnail<R: Runtime>(app: &AppHandle<R>, name: &str) {
+    if let Ok(dir) = thumbs_dir(app) {
+        let _ = std::fs::remove_file(dir.join(name));
+    }
+}
+
 fn thumbs_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     app.path().app_cache_dir().map(|d| d.join("thumbs")).map_err(|e| e.to_string())
 }

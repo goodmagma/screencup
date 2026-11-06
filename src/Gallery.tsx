@@ -202,8 +202,9 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       .catch((e) => notify(String(e), true));
   const reveal = (name: string) => invoke("reveal_capture", { name }).catch((e) => notify(String(e)));
   /** Images open in the editor; videos in the system player. */
+  /** Images open in the image editor; recordings in the video editor (trim, GIF). */
   const edit = (name: string) =>
-    isVideo(name) ? open(name) : invoke("open_editor", { name }).catch((e) => notify(String(e)));
+    invoke(isVideo(name) ? "open_video_editor" : "open_editor", { name }).catch((e) => notify(String(e)));
 
   const copy = useCallback(
     (name: string) =>
@@ -284,7 +285,8 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   const itemActions = (name: string): MenuItem[] => {
     const video = isVideo(name);
     return [
-      { label: video ? t("gallery.play") : t("gallery.edit"), onSelect: () => edit(name) },
+      { label: t("gallery.edit"), onSelect: () => edit(name) },
+      ...(video ? [{ label: t("gallery.play"), onSelect: () => open(name) }] : []),
       { label: t("common.copyToClipboard"), onSelect: () => copy(name), disabled: video },
       ...(IS_WINDOWS ? [{ label: t("ocr.copyText"), onSelect: () => copyText(name), disabled: video }] : []),
       { label: t("gallery.openDefault"), onSelect: () => open(name) },
@@ -418,7 +420,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
         />
         <BigButton
           icon={<PencilRuler size={26} />}
-          label={selected && isVideo(selected) ? t("gallery.play") : t("gallery.editMenu")}
+          label={t("gallery.editMenu")}
           ring="#30a46c"
           disabled={!selected}
           onClick={() => selected && edit(selected)}

@@ -6,6 +6,7 @@ import { ClickFx } from "./ClickFx";
 import { RecBar, RecFrame } from "./RecBar";
 import { SettingsWindow } from "./Settings";
 import { AboutWindow } from "./About";
+import { VideoEditorWindow } from "./VideoEditor";
 import { t } from "./i18n";
 
 declare global {
@@ -22,6 +23,8 @@ declare global {
     __SCREENCUP_CLICKFX__?: boolean;
     /** Set by `about::show` in src-tauri/src/about.rs on the About window. */
     __SCREENCUP_ABOUT__?: boolean;
+    /** Set by `open_video_editor` in src-tauri/src/video.rs: the recording being edited. */
+    __SCREENCUP_VIDEO__?: string;
   }
 }
 
@@ -53,7 +56,9 @@ function MainWindow() {
   useEffect(() => {
     const title = editName
       ? t("editor.title", { name: editName })
-      : window.__SCREENCUP_SETTINGS__
+      : window.__SCREENCUP_VIDEO__
+        ? t("video.title", { name: window.__SCREENCUP_VIDEO__ })
+        : window.__SCREENCUP_SETTINGS__
         ? t("settings.title")
         : window.__SCREENCUP_ABOUT__
           ? t("about.title")
@@ -69,6 +74,8 @@ function MainWindow() {
         <SettingsWindow notify={notify} />
       ) : window.__SCREENCUP_ABOUT__ ? (
         <AboutWindow notify={notify} />
+      ) : window.__SCREENCUP_VIDEO__ ? (
+        <VideoEditorWindow name={window.__SCREENCUP_VIDEO__} notify={notify} />
       ) : (
         <Gallery notify={notify} />
       )}

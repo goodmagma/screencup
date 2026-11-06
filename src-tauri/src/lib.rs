@@ -17,6 +17,7 @@ mod recorder;
 mod settings;
 mod share;
 mod updater;
+mod video;
 
 use capture::CaptureKind;
 use recorder::RecordKind;
@@ -143,6 +144,10 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
+            video::video_source,
+            video::open_video_editor,
+            video::trim_video,
+            video::export_gif,
             ocr::ocr_capture,
             email::email_captures,
             updater::check_update,

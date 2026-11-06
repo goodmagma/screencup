@@ -188,6 +188,19 @@ export const it = {
   "ocr.failed": "Riconoscimento del testo non riuscito: {error}",
   "rec.pause": "Metti in pausa",
   "rec.resume": "Riprendi la registrazione",
+  "video.title": "Screencup video - {name}",
+  "video.applyTrim": "Applica taglio",
+  "video.applyTrimHint": "Tiene solo il tratto tra le maniglie; il video originale va nel cestino",
+  "video.exportGif": "Esporta GIF…",
+  "video.exportGifHint": "Salva il tratto scelto come GIF animata",
+  "video.setStart": "Imposta inizio",
+  "video.setEnd": "Imposta fine",
+  "video.playPause": "Riproduci / pausa (Spazio)",
+  "video.kept": "tieni {start} – {end} ({length})",
+  "video.trimmed": "Video tagliato",
+  "video.failed": "Elaborazione non riuscita: {error}",
+  "video.gifWorking": "Creazione della GIF…",
+  "video.gifHint": "Tratto di {length}. Le GIF lunghe o grandi diventano pesanti.",
 };
 
 export type Key = keyof typeof it;

@@ -183,5 +183,18 @@ export const en: Record<Key, string> = {
   "ocr.failed": "Text recognition failed: {error}",
   "rec.pause": "Pause",
   "rec.resume": "Resume recording",
+  "video.title": "Screencup video - {name}",
+  "video.applyTrim": "Apply trim",
+  "video.applyTrimHint": "Keep only the part between the handles; the original video goes to the trash",
+  "video.exportGif": "Export GIF…",
+  "video.exportGifHint": "Save the selected part as an animated GIF",
+  "video.setStart": "Set start",
+  "video.setEnd": "Set end",
+  "video.playPause": "Play / pause (Space)",
+  "video.kept": "keep {start} – {end} ({length})",
+  "video.trimmed": "Video trimmed",
+  "video.failed": "Processing failed: {error}",
+  "video.gifWorking": "Creating the GIF…",
+  "video.gifHint": "{length} long. Long or large GIFs get heavy.",
 };
 
