@@ -9,6 +9,7 @@ import {
   Circle as CircleIcon,
   MessageSquare,
   Pentagon,
+  ScanText,
   Copy,
   Crop as CropIcon,
   FileDown,
@@ -1026,6 +1027,17 @@ export function Editor({ name, onClose, notify }: Props) {
 
   const requestClose = () => (dirty ? setAskClose(true) : onClose());
 
+  /** Saves, then copies the text recognised in the image (OCR) to the clipboard. */
+  const copyText = async () => {
+    if (!(await save())) return;
+    try {
+      const text = await invoke<string>("ocr_capture", { name });
+      notify(text ? tr("ocr.copied", { count: text.length }) : tr("ocr.none"));
+    } catch (e) {
+      notify(tr("ocr.failed", { error: String(e) }));
+    }
+  };
+
   /** Saves, then writes a copy as PNG, JPG or PDF where the user picks. */
   const saveAs = async () => {
     if (!(await save())) return;
@@ -1126,6 +1138,16 @@ export function Editor({ name, onClose, notify }: Props) {
           disabled={busy}
           title="Ctrl+C"
         />
+        {navigator.userAgent.includes("Windows") && (
+          <RibbonButton
+            icon={<ScanText size={20} />}
+            tint="#8e4ec6"
+            label={tr("ocr.copyText")}
+            onClick={copyText}
+            disabled={busy}
+            title={tr("ocr.copyTextHint")}
+          />
+        )}
         <div className="ribbon-sep" />
         <RibbonButton
           icon={<Undo2 size={20} />}

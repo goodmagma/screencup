@@ -176,4 +176,9 @@ export const pt: Record<Key, string> = {
   "tool.polygon": "Polígono",
   "tool.callout": "Balão de comentário",
   "tool.brace": "Chave",
+  "ocr.copyText": "Copiar texto",
+  "ocr.copyTextHint": "Reconhece o texto da imagem (OCR) e o copia para a área de transferência",
+  "ocr.copied": "Texto copiado para a área de transferência ({count} caracteres)",
+  "ocr.none": "Nenhum texto encontrado na imagem",
+  "ocr.failed": "Falha no reconhecimento de texto: {error}",
 };

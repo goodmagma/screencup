@@ -190,6 +190,11 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   const record = (kind: RecordKind) => invoke("toggle_recording", { kind });
   const isVideo = (name: string) => captures.find((c) => c.name === name)?.video ?? false;
   const open = (name: string) => invoke("open_capture", { name }).catch((e) => notify(String(e)));
+  /** Text recognition; the text goes to the clipboard. */
+  const copyText = (name: string) =>
+    invoke<string>("ocr_capture", { name })
+      .then((text) => notify(text ? t("ocr.copied", { count: text.length }) : t("ocr.none")))
+      .catch((e) => notify(t("ocr.failed", { error: String(e) }), true));
   const openWith = (name: string) => invoke("open_capture_with", { name }).catch((e) => notify(String(e)));
   const saveAs = (name: string) =>
     invoke<string | null>("export_capture", { name })
@@ -281,6 +286,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
     return [
       { label: video ? t("gallery.play") : t("gallery.edit"), onSelect: () => edit(name) },
       { label: t("common.copyToClipboard"), onSelect: () => copy(name), disabled: video },
+      ...(IS_WINDOWS ? [{ label: t("ocr.copyText"), onSelect: () => copyText(name), disabled: video }] : []),
       { label: t("gallery.openDefault"), onSelect: () => open(name) },
       ...(IS_WINDOWS ? [{ label: t("gallery.openWith"), onSelect: () => openWith(name) }] : []),
       { label: t("gallery.saveAs"), onSelect: () => saveAs(name), disabled: video },

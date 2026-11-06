@@ -12,6 +12,7 @@ mod export;
 mod hotkeys;
 mod i18n;
 mod library;
+mod ocr;
 mod recorder;
 mod settings;
 mod share;
@@ -142,6 +143,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
+            ocr::ocr_capture,
             email::email_captures,
             updater::check_update,
             updater::install_update,

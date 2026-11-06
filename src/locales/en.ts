@@ -176,5 +176,10 @@ export const en: Record<Key, string> = {
   "tool.polygon": "Polygon",
   "tool.callout": "Callout",
   "tool.brace": "Brace",
+  "ocr.copyText": "Copy text",
+  "ocr.copyTextHint": "Recognise the text in the image (OCR) and copy it to the clipboard",
+  "ocr.copied": "Text copied to the clipboard ({count} characters)",
+  "ocr.none": "No text found in the image",
+  "ocr.failed": "Text recognition failed: {error}",
 };
 

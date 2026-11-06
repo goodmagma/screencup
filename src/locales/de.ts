@@ -176,4 +176,9 @@ export const de: Record<Key, string> = {
   "tool.polygon": "Polygon",
   "tool.callout": "Sprechblase",
   "tool.brace": "Geschweifte Klammer",
+  "ocr.copyText": "Text kopieren",
+  "ocr.copyTextHint": "Erkennt den Text im Bild (OCR) und kopiert ihn in die Zwischenablage",
+  "ocr.copied": "Text in die Zwischenablage kopiert ({count} Zeichen)",
+  "ocr.none": "Kein Text im Bild gefunden",
+  "ocr.failed": "Texterkennung fehlgeschlagen: {error}",
 };

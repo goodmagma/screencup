@@ -181,6 +181,11 @@ export const it = {
   "tool.polygon": "Poligono",
   "tool.callout": "Commento",
   "tool.brace": "Graffa",
+  "ocr.copyText": "Copia testo",
+  "ocr.copyTextHint": "Riconosce il testo nell'immagine (OCR) e lo copia negli appunti",
+  "ocr.copied": "Testo copiato negli appunti ({count} caratteri)",
+  "ocr.none": "Nessun testo trovato nell'immagine",
+  "ocr.failed": "Riconoscimento del testo non riuscito: {error}",
 };
 
 export type Key = keyof typeof it;

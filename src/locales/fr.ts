@@ -176,4 +176,9 @@ export const fr: Record<Key, string> = {
   "tool.polygon": "Polygone",
   "tool.callout": "Bulle",
   "tool.brace": "Accolade",
+  "ocr.copyText": "Copier le texte",
+  "ocr.copyTextHint": "Reconnaît le texte de l'image (OCR) et le copie dans le presse-papiers",
+  "ocr.copied": "Texte copié dans le presse-papiers ({count} caractères)",
+  "ocr.none": "Aucun texte trouvé dans l'image",
+  "ocr.failed": "Échec de la reconnaissance du texte : {error}",
 };
