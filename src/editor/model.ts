@@ -8,6 +8,9 @@ export type Tool =
   | "arrow"
   | "line"
   | "pen"
+  | "polygon"
+  | "callout"
+  | "brace"
   | "rect"
   | "ellipse"
   | "highlight"
@@ -27,9 +30,23 @@ interface Base {
 export type LineShape = Base & { kind: "arrow" | "line"; points: [number, number, number, number] };
 /** Freehand stroke: x, y pairs. */
 export type PenShape = Base & { kind: "pen"; points: number[] };
+/** Closed outline through the clicked vertices: x, y pairs. */
+export type PolygonShape = Base & { kind: "polygon"; points: number[] };
+/** Speech balloon: a filled rounded box with text, and a tail pointing at (tx, ty). */
+export type CalloutShape = Base & {
+  kind: "callout";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  tx: number;
+  ty: number;
+  text: string;
+};
 export type BoxShape = Base & {
-  /** "magnify": an ellipse showing the image under it at `MAGNIFY_ZOOM`. */
-  kind: "rect" | "ellipse" | "highlight" | "blur" | "magnify";
+  /** "magnify": an ellipse showing the image under it at `MAGNIFY_ZOOM`; "brace": a curly
+   * brace spanning the box height, pointing right before rotation. */
+  kind: "rect" | "ellipse" | "highlight" | "blur" | "magnify" | "brace";
   x: number;
   y: number;
   w: number;
@@ -39,7 +56,7 @@ export type BoxShape = Base & {
 };
 export type TextShape = Base & { kind: "text"; x: number; y: number; text: string; rotation?: number };
 export type StepShape = Base & { kind: "step"; x: number; y: number; n: number };
-export type Shape = LineShape | PenShape | BoxShape | TextShape | StepShape;
+export type Shape = LineShape | PenShape | PolygonShape | CalloutShape | BoxShape | TextShape | StepShape;
 
 /** Part of the source image kept, in source pixels. */
 export interface Crop {
@@ -82,13 +99,16 @@ export const TOOLS: { tool: Tool; key: string }[] = [
   { tool: "line", key: "l" },
   { tool: "rect", key: "r" },
   { tool: "text", key: "t" },
+  { tool: "callout", key: "k" },
   { tool: "ellipse", key: "e" },
+  { tool: "polygon", key: "g" },
   { tool: "step", key: "n" },
   { tool: "highlight", key: "h" },
   { tool: "pen", key: "p" },
   { tool: "blur", key: "b" },
   { tool: "magnify", key: "m" },
   { tool: "crop", key: "c" },
+  { tool: "brace", key: "q" },
 ];
 
 /** Keeps annotation sizes readable on large captures: 1 up to ~1600px, growing beyond. */
@@ -98,7 +118,12 @@ export const fontSize = (width: number) => 10 + width * 3.5;
 export const stepRadius = (width: number) => 9 + width * 2;
 
 export const isBox = (s: Shape): s is BoxShape =>
-  s.kind === "rect" || s.kind === "ellipse" || s.kind === "highlight" || s.kind === "blur" || s.kind === "magnify";
+  s.kind === "rect" ||
+  s.kind === "ellipse" ||
+  s.kind === "highlight" ||
+  s.kind === "blur" ||
+  s.kind === "magnify" ||
+  s.kind === "brace";
 
 /** Box shapes positioned by their centre in Konva (ellipses). */
 export const isCentred = (s: Shape): s is BoxShape => s.kind === "ellipse" || s.kind === "magnify";
@@ -121,6 +146,8 @@ export function isMeaningful(s: Shape): boolean {
     return Math.hypot(x2 - x1, y2 - y1) >= 4;
   }
   if (s.kind === "pen") return s.points.length >= 4;
+  if (s.kind === "polygon") return s.points.length >= 6;
+  if (s.kind === "callout") return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
   if (isBox(s)) return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
   return true;
 }

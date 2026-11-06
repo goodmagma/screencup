@@ -5,7 +5,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { t as tr } from "../i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
+  Braces,
   Circle as CircleIcon,
+  MessageSquare,
+  Pentagon,
   Copy,
   Crop as CropIcon,
   FileDown,
@@ -27,11 +30,27 @@ import {
   X,
   ZoomIn,
 } from "lucide-react";
-import { Arrow, Circle, Ellipse, Group, Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
+import {
+  Arrow,
+  Circle,
+  Ellipse,
+  Group,
+  Image as KImage,
+  Layer,
+  Line,
+  Rect,
+  Shape as KShape,
+  Stage,
+  Text,
+  Transformer,
+} from "react-konva";
+import type { Context as KonvaContext } from "konva/lib/Context";
+import type { Shape as KonvaShapeNode } from "konva/lib/Shape";
 import { RibbonButton } from "../ui";
 import {
   type Annotations,
   type BoxShape,
+  type CalloutShape,
   COLORS,
   type Crop,
   type Doc,
@@ -39,6 +58,7 @@ import {
   type LineShape,
   MAGNIFY_ZOOM,
   type PenShape,
+  type PolygonShape,
   SIZES,
   type Shape,
   TOOLS,
@@ -64,6 +84,8 @@ interface TextEdit {
   color: string;
   width: number;
   value: string;
+  /** Set when editing the text of a callout: its box, in image pixels. */
+  box?: { w: number; h: number };
 }
 
 const VIEW_PADDING = 32;
@@ -92,6 +114,9 @@ const TOOL_ICONS: Record<Tool, ReactNode> = {
   arrow: <MoveUpRight size={20} />,
   line: <Slash size={20} />,
   pen: <Pencil size={20} />,
+  polygon: <Pentagon size={20} />,
+  callout: <MessageSquare size={20} />,
+  brace: <Braces size={20} />,
   rect: <Square size={20} />,
   ellipse: <CircleIcon size={20} />,
   highlight: <Highlighter size={20} />,
@@ -104,6 +129,78 @@ const TOOL_ICONS: Record<Tool, ReactNode> = {
 
 /** Smallest crop kept, in image pixels; a stray click crops nothing. */
 const MIN_CROP = 8;
+/** Clicking this close (screen pixels) to the first vertex closes the polygon. */
+const CLOSE_DISTANCE = 10;
+const FONT_FAMILY = "system-ui, 'Segoe UI', sans-serif";
+
+/** Path of a curly brace "}" filling w x h: tip on the middle of the right side. */
+function bracePath(ctx: KonvaContext, w: number, h: number) {
+  const r = Math.min(h / 4, w / 2);
+  const mid = h / 2;
+  const x = w / 2;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(x, 0, x, r);
+  ctx.lineTo(x, mid - r);
+  ctx.quadraticCurveTo(x, mid, w, mid);
+  ctx.quadraticCurveTo(x, mid, x, mid + r);
+  ctx.lineTo(x, h - r);
+  ctx.quadraticCurveTo(x, h, 0, h);
+}
+
+/**
+ * Path of a callout: a rounded box (w x h, at 0,0) plus a triangular tail towards (tx, ty),
+ * in the same local coordinates. The tail leaves from the box side facing the tip.
+ */
+function calloutPath(ctx: KonvaContext, w: number, h: number, tx: number, ty: number, radius: number) {
+  const r = Math.min(radius, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.arcTo(w, 0, w, h, r);
+  ctx.arcTo(w, h, 0, h, r);
+  ctx.arcTo(0, h, 0, 0, r);
+  ctx.arcTo(0, 0, w, 0, r);
+  ctx.closePath();
+  const inside = tx > 0 && tx < w && ty > 0 && ty < h;
+  if (inside) return;
+  // Base of the tail on the side the tip is past, its width a fraction of that side.
+  const dx = tx < 0 ? -tx : tx > w ? tx - w : 0;
+  const dy = ty < 0 ? -ty : ty > h ? ty - h : 0;
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  if (dy >= dx) {
+    const half = Math.max(4, Math.min(w / 6, 24));
+    const cx = clamp(tx, r + half, w - r - half);
+    const y = ty > h ? h : 0;
+    ctx.moveTo(cx - half, y);
+    ctx.lineTo(tx, ty);
+    ctx.lineTo(cx + half, y);
+  } else {
+    const half = Math.max(4, Math.min(h / 6, 24));
+    const cy = clamp(ty, r + half, h - r - half);
+    const x = tx > w ? w : 0;
+    ctx.moveTo(x, cy - half);
+    ctx.lineTo(tx, ty);
+    ctx.lineTo(x, cy + half);
+  }
+  ctx.closePath();
+}
+
+/** Lines of `text` wrapped to `maxWidth` with the context's current font. */
+function wrapText(ctx: KonvaContext, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    let line = "";
+    for (const word of paragraph.split(" ")) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(next).width > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
 
 const win = getCurrentWindow();
 
@@ -136,6 +233,13 @@ export function Editor({ name, onClose, notify }: Props) {
   const [view, setView] = useState({ w: 800, h: 600 });
   const [busy, setBusy] = useState(false);
   const [askClose, setAskClose] = useState(false);
+  /** Vertices of the polygon being drawn, the last pair following the mouse. */
+  const [polyDraft, setPolyDraftState] = useState<number[] | null>(null);
+  const polyRef = useRef<number[] | null>(null);
+  const setPolyDraft = (p: number[] | null) => {
+    polyRef.current = p;
+    setPolyDraftState(p);
+  };
   /** Area being dragged with the crop tool, in image pixels. */
   const [cropDraft, setCropDraftState] = useState<Crop | null>(null);
   const cropDraftRef = useRef<Crop | null>(null);
@@ -259,6 +363,21 @@ export function Editor({ name, onClose, notify }: Props) {
     const { x, y } = pointer();
     const base = { id: crypto.randomUUID(), color, width: strokeWidth };
     switch (tool) {
+      case "polygon": {
+        const p = polyRef.current;
+        if (!p) {
+          setPolyDraft([x, y, x, y]);
+          break;
+        }
+        const fixed = p.slice(0, -2);
+        const nearFirst = Math.hypot(x - fixed[0], y - fixed[1]) * zoom <= CLOSE_DISTANCE;
+        if (nearFirst && fixed.length >= 6) finishPolygon(fixed);
+        else setPolyDraft([...fixed, x, y, x, y]);
+        break;
+      }
+      case "callout":
+        setDraft({ ...base, kind: "callout", x, y, w: 0, h: 0, tx: x, ty: y, text: "" });
+        break;
       case "crop":
         setCropDraft({ x, y, w: 0, h: 0 });
         break;
@@ -274,6 +393,7 @@ export function Editor({ name, onClose, notify }: Props) {
       case "highlight":
       case "blur":
       case "magnify":
+      case "brace":
         setDraft({ ...base, kind: tool, x, y, w: 0, h: 0 });
         break;
       case "text":
@@ -289,6 +409,12 @@ export function Editor({ name, onClose, notify }: Props) {
   };
 
   const onStageMove = (e: KonvaEventObject<MouseEvent>) => {
+    const p = polyRef.current;
+    if (p) {
+      const { x, y } = pointer();
+      setPolyDraft([...p.slice(0, -2), x, y]);
+      return;
+    }
     const c = cropDraftRef.current;
     if (c) {
       const { x, y } = pointer();
@@ -299,6 +425,7 @@ export function Editor({ name, onClose, notify }: Props) {
     if (!d) return;
     const { x, y } = pointer();
     if (d.kind === "arrow" || d.kind === "line") setDraft({ ...d, points: [d.points[0], d.points[1], x, y] });
+    else if (d.kind === "callout") setDraft({ ...d, w: x - d.x, h: y - d.y });
     else if (d.kind === "pen") {
       // Skip points closer than a screen pixel or two: smoother line, smaller document.
       const [lx, ly] = d.points.slice(-2);
@@ -339,9 +466,39 @@ export function Editor({ name, onClose, notify }: Props) {
     if (!d) return;
     setDraft(null);
     if (!isMeaningful(d)) return;
+    if (d.kind === "callout") {
+      const b = normalizeBox(d);
+      // Tail below the box, towards the left third, as in a comic balloon.
+      const callout: CalloutShape = { ...b, tx: b.x + b.w * 0.3, ty: b.y + b.h + Math.max(24, b.h * 0.35) };
+      commit([...shapes, callout]);
+      setSelectedId(d.id);
+      setTextEdit({ id: d.id, x: b.x, y: b.y, color: d.color, width: d.width, value: "", box: { w: b.w, h: b.h } });
+      return;
+    }
     commit([...shapes, isBox(d) ? normalizeBox(d) : d]);
     setSelectedId(d.id);
   }, [commit, shapes, img]);
+
+  /** Ends the polygon; vertices doubled by a double click are merged. */
+  const finishPolygon = (vertices: number[]) => {
+    setPolyDraft(null);
+    const points: number[] = [];
+    for (let i = 0; i < vertices.length; i += 2) {
+      const [x, y] = [vertices[i], vertices[i + 1]];
+      const n = points.length;
+      if (n && Math.hypot(x - points[n - 2], y - points[n - 1]) * zoom < 3) continue;
+      points.push(x, y);
+    }
+    if (points.length < 6) return;
+    const shape: PolygonShape = { id: crypto.randomUUID(), kind: "polygon", color, width: strokeWidth, points };
+    commit([...shapes, shape]);
+    setSelectedId(shape.id);
+  };
+
+  // A polygon left unfinished is dropped when switching tool.
+  useEffect(() => {
+    if (tool !== "polygon") setPolyDraft(null);
+  }, [tool]);
 
   useEffect(() => {
     window.addEventListener("mouseup", finishDraft);
@@ -354,7 +511,9 @@ export function Editor({ name, onClose, notify }: Props) {
     if (!textEdit) return;
     const { id, value } = textEdit;
     setTextEdit(null);
-    if (id) {
+    if (id && textEdit.box) {
+      update(id, (s) => (s.kind === "callout" ? { ...s, text: value } : s));
+    } else if (id) {
       if (value.trim()) update(id, (s) => (s.kind === "text" ? { ...s, text: value } : s));
       else commit(shapes.filter((s) => s.id !== id));
     } else if (value.trim()) {
@@ -372,7 +531,7 @@ export function Editor({ name, onClose, notify }: Props) {
   useEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
-    const transformable = selected && (isBox(selected) || selected.kind === "text");
+    const transformable = selected && (isBox(selected) || selected.kind === "text" || selected.kind === "callout");
     const node = transformable ? stageRef.current?.findOne((n: KonvaNode) => n.id() === selected.id) : undefined;
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
@@ -385,11 +544,14 @@ export function Editor({ name, onClose, notify }: Props) {
       n.position({ x: 0, y: 0 });
       const [x1, y1, x2, y2] = s.points;
       update(s.id, (sh) => ({ ...(sh as LineShape), points: [x1 + dx, y1 + dy, x2 + dx, y2 + dy] }));
-    } else if (s.kind === "pen") {
+    } else if (s.kind === "callout") {
+      const [dx, dy] = [n.x() - s.x, n.y() - s.y];
+      update(s.id, (sh) => ({ ...(sh as CalloutShape), x: n.x(), y: n.y(), tx: s.tx + dx, ty: s.ty + dy }));
+    } else if (s.kind === "pen" || s.kind === "polygon") {
       const [dx, dy] = [n.x(), n.y()];
       n.position({ x: 0, y: 0 });
       update(s.id, (sh) => ({
-        ...(sh as PenShape),
+        ...(sh as PenShape | PolygonShape),
         points: s.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
       }));
     } else if (isCentred(s)) {
@@ -399,9 +561,15 @@ export function Editor({ name, onClose, notify }: Props) {
     }
   };
 
-  const onTransformEnd = (s: BoxShape | TextShape) => (e: KonvaEventObject<Event>) => {
+  const onTransformEnd = (s: BoxShape | TextShape | CalloutShape) => (e: KonvaEventObject<Event>) => {
     const n = e.target;
     const rotation = n.rotation();
+    if (s.kind === "callout") {
+      const [w, h] = [s.w * n.scaleX(), s.h * n.scaleY()];
+      n.scale({ x: 1, y: 1 });
+      update(s.id, (sh) => ({ ...sh, x: n.x(), y: n.y(), w, h }));
+      return;
+    }
     if (s.kind === "text") {
       n.scale({ x: 1, y: 1 });
       update(s.id, (sh) => ({ ...sh, x: n.x(), y: n.y(), rotation }));
@@ -512,6 +680,94 @@ export function Editor({ name, onClose, notify }: Props) {
             shadowColor="#000000"
             shadowBlur={s.width * 2}
             shadowOpacity={0.35}
+          />
+        );
+      }
+      case "polygon":
+        return (
+          <Line
+            key={s.id}
+            {...handlers}
+            points={s.points}
+            closed
+            stroke={s.color}
+            strokeWidth={s.width}
+            lineJoin="round"
+            hitStrokeWidth={hit}
+            fillEnabled={false}
+          />
+        );
+      case "brace":
+        return (
+          <KShape
+            key={s.id}
+            {...handlers}
+            onTransformEnd={onTransformEnd(s)}
+            x={s.x}
+            y={s.y}
+            width={s.w}
+            height={s.h}
+            rotation={s.rotation ?? 0}
+            stroke={s.color}
+            strokeWidth={s.width}
+            lineCap="round"
+            lineJoin="round"
+            hitStrokeWidth={hit}
+            fillEnabled={false}
+            sceneFunc={(ctx: KonvaContext, shape: KonvaShapeNode) => {
+              bracePath(ctx, s.w, s.h);
+              ctx.fillStrokeShape(shape);
+            }}
+          />
+        );
+      case "callout": {
+        const size = fontSize(s.width);
+        const pad = size * 0.6;
+        const editing = textEdit?.id === s.id;
+        return (
+          <KShape
+            key={s.id}
+            {...handlers}
+            onTransformEnd={onTransformEnd(s)}
+            onDblClick={() =>
+              setTextEdit({
+                id: s.id,
+                x: s.x,
+                y: s.y,
+                color: s.color,
+                width: s.width,
+                value: s.text,
+                box: { w: s.w, h: s.h },
+              })
+            }
+            x={s.x}
+            y={s.y}
+            width={s.w}
+            height={s.h}
+            fill={s.color}
+            shadowColor="#000000"
+            shadowBlur={8}
+            shadowOpacity={0.3}
+            shadowOffsetY={2}
+            sceneFunc={(ctx: KonvaContext, shape: KonvaShapeNode) => {
+              calloutPath(ctx, s.w, s.h, s.tx - s.x, s.ty - s.y, size * 0.8);
+              ctx.fillStrokeShape(shape);
+              if (editing || !s.text) return;
+              // Text after the balloon, without its shadow: centred, wrapped to the box.
+              ctx.setAttr("shadowColor", "transparent");
+              ctx.setAttr("fillStyle", badgeText(s.color));
+              ctx.setAttr("font", `600 ${size}px ${FONT_FAMILY}`);
+              ctx.setAttr("textAlign", "center");
+              ctx.setAttr("textBaseline", "middle");
+              const lines = wrapText(ctx, s.text, Math.max(1, s.w - pad * 2));
+              const lineHeight = size * 1.25;
+              const top = s.h / 2 - ((lines.length - 1) * lineHeight) / 2;
+              lines.forEach((line, i) => ctx.fillText(line, s.w / 2, top + i * lineHeight));
+            }}
+            hitFunc={(ctx: KonvaContext, shape: KonvaShapeNode) => {
+              calloutPath(ctx, s.w, s.h, s.tx - s.x, s.ty - s.y, size * 0.8);
+              ctx.fillStrokeShape(shape);
+            }}
           />
         );
       }
@@ -626,6 +882,36 @@ export function Editor({ name, onClose, notify }: Props) {
         );
       }
     }
+  };
+
+  /** Handle on the tip of the selected callout's tail; drag it to point elsewhere. */
+  const tailHandle = () => {
+    if (selected?.kind !== "callout") return null;
+    const s = (shown.find((sh) => sh.id === selected.id) ?? selected) as CalloutShape;
+    const size = HANDLE / zoom;
+    const moved = (node: KonvaNode) =>
+      shapes.map((sh) =>
+        sh.id === s.id ? { ...selected, tx: node.x() + size / 2, ty: node.y() + size / 2 } : sh,
+      );
+    return (
+      <Rect
+        x={s.tx - size / 2}
+        y={s.ty - size / 2}
+        width={size}
+        height={size}
+        fill="#f76b15"
+        stroke="#1c1f24"
+        strokeWidth={1 / zoom}
+        draggable
+        onMouseEnter={() => setCursor("crosshair")}
+        onMouseLeave={() => setCursor("")}
+        onDragMove={(e) => setPreview(moved(e.target))}
+        onDragEnd={(e) => {
+          commit(moved(e.target));
+          setPreview(null);
+        }}
+      />
+    );
   };
 
   /** Square handles on both ends of the selected arrow or line; drag one to move that end. */
@@ -767,8 +1053,10 @@ export function Editor({ name, onClose, notify }: Props) {
     else if (mod && key === "s") save();
     else if (mod && key === "c") copyImage();
     else if (e.key === "Delete" || e.key === "Backspace") removeSelected();
+    else if (polyRef.current && e.key === "Enter") finishPolygon(polyRef.current.slice(0, -2));
     else if (e.key === "Escape") {
-      if (selectedId) setSelectedId(null);
+      if (polyRef.current) setPolyDraft(null);
+      else if (selectedId) setSelectedId(null);
       else setTool("select");
     } else if (!mod && !e.altKey) {
       const t = TOOLS.find((t) => t.key === key);
@@ -923,17 +1211,30 @@ export function Editor({ name, onClose, notify }: Props) {
                 height={crop.h * zoom}
                 onMouseDown={onStageDown}
                 onMouseMove={onStageMove}
+                onDblClick={() => polyRef.current && finishPolygon(polyRef.current.slice(0, -2))}
               >
                 <Layer ref={contentRef} scaleX={zoom} scaleY={zoom} x={-crop.x * zoom} y={-crop.y * zoom}>
                   <KImage image={img} name="background" />
                   {shown.map((s) => renderShape(s, true))}
                   {draft && renderShape(draft, false)}
+                  {polyDraft && (
+                    <Line
+                      points={polyDraft}
+                      stroke={color}
+                      strokeWidth={strokeWidth}
+                      lineJoin="round"
+                      dash={[strokeWidth * 2, strokeWidth * 2]}
+                      listening={false}
+                    />
+                  )}
                 </Layer>
                 <Layer ref={uiRef} scaleX={zoom} scaleY={zoom} x={-crop.x * zoom} y={-crop.y * zoom}>
                   {cropDraft && cropShade(normalizeBox(cropDraft))}
                   <Transformer
                     ref={trRef}
-                    rotateEnabled={selected?.kind !== "blur" && selected?.kind !== "magnify"}
+                    rotateEnabled={
+                      selected?.kind !== "blur" && selected?.kind !== "magnify" && selected?.kind !== "callout"
+                    }
                     enabledAnchors={
                       selected?.kind === "text"
                         ? []
@@ -961,18 +1262,24 @@ export function Editor({ name, onClose, notify }: Props) {
                     rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
                   />
                   {endpointHandles()}
+                  {tailHandle()}
                 </Layer>
               </Stage>
               {textEdit && (
                 <textarea
-                  className="text-edit"
+                  className={textEdit.box ? "text-edit callout-edit" : "text-edit"}
                   autoFocus
                   value={textEdit.value}
                   style={{
                     left: (textEdit.x - crop.x) * zoom,
                     top: (textEdit.y - crop.y) * zoom,
-                    color: textEdit.color,
+                    color: textEdit.box ? badgeText(textEdit.color) : textEdit.color,
                     fontSize: fontSize(textEdit.width) * zoom,
+                    ...(textEdit.box && {
+                      width: textEdit.box.w * zoom,
+                      height: textEdit.box.h * zoom,
+                      padding: fontSize(textEdit.width) * 0.6 * zoom,
+                    }),
                   }}
                   onChange={(e) => setTextEdit({ ...textEdit, value: e.target.value })}
                   onBlur={commitText}

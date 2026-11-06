@@ -173,5 +173,8 @@ export const en: Record<Key, string> = {
   "share.permanentShort": "permanent",
   "share.selectFirst": "Select one or more captures first.",
   "gallery.openWith": "Open with…",
+  "tool.polygon": "Polygon",
+  "tool.callout": "Callout",
+  "tool.brace": "Brace",
 };
 

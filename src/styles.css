@@ -1237,3 +1237,15 @@ html.clickfx body {
 .share-link:hover {
   background: var(--chrome-2);
 }
+
+/* Text typed into a callout: fills the balloon, centred, no outline box of its own. */
+.text-edit.callout-edit {
+  box-sizing: border-box;
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  text-align: center;
+  font-weight: 600;
+  line-height: 1.25;
+  field-sizing: fixed;
+}

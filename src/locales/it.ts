@@ -178,6 +178,9 @@ export const it = {
   "share.permanentShort": "permanente",
   "share.selectFirst": "Seleziona prima una o più catture.",
   "gallery.openWith": "Apri con…",
+  "tool.polygon": "Poligono",
+  "tool.callout": "Commento",
+  "tool.brace": "Graffa",
 };
 
 export type Key = keyof typeof it;
