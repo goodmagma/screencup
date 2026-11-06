@@ -7,6 +7,7 @@ mod capture;
 mod clickfx;
 mod clipboard;
 mod edits;
+mod email;
 mod export;
 mod hotkeys;
 mod i18n;
@@ -142,6 +143,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             capture::capture,
+            email::email_captures,
             updater::check_update,
             updater::install_update,
             export::export_capture,

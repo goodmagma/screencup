@@ -18,8 +18,6 @@ export interface SettingsData {
   max_captures: number;
   /** "auto" (system language) or a language code. */
   language: string;
-  /** Default host for sharing: "litterbox" (temporary link) or "catbox" (permanent). */
-  share_service: "litterbox" | "catbox";
   share_expiry_hours: number;
   share_confirmed: boolean;
   check_updates: boolean;
@@ -337,16 +335,6 @@ export function SettingsWindow({ notify }: { notify: (message: string) => void }
       </Section>
 
       <Section title={t("settings.sharing")}>
-        <label className="setting-select">
-          <span>{t("settings.shareService")}</span>
-          <select
-            value={settings.share_service}
-            onChange={(e) => update({ share_service: e.target.value as SettingsData["share_service"] })}
-          >
-            <option value="litterbox">{t("settings.shareLitterbox")}</option>
-            <option value="catbox">{t("settings.shareCatbox")}</option>
-          </select>
-        </label>
         <label className="setting-select">
           <span>{t("settings.shareExpiry")}</span>
           <select

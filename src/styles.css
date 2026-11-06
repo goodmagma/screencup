@@ -1105,3 +1105,135 @@ html.clickfx body {
   color: inherit;
   text-decoration: underline dotted;
 }
+
+/* --- share panel (Share button pop-up) ---------------------------------------------------- */
+
+.share-anchor {
+  position: relative;
+}
+
+.share-panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 25;
+  width: 400px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 55%);
+}
+
+/* Pointer towards the button. */
+.share-panel::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: calc(50% - 9px);
+  border: 9px solid transparent;
+  border-top-color: var(--panel);
+}
+
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--chrome-2);
+  color: var(--text);
+  text-align: left;
+}
+
+.share-row:hover:not(:disabled) {
+  border-color: #2d8cff;
+}
+
+.share-row:disabled {
+  opacity: 0.45;
+}
+
+.share-row-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #2d8cff;
+  color: #fff;
+  flex: none;
+}
+
+.share-row-text,
+.share-link-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.share-row-text small,
+.share-link-text small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-hint,
+.share-empty {
+  margin: 2px 4px 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.share-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 4px 0;
+}
+
+.link-button {
+  padding: 0;
+  background: none;
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.share-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 2px 6px;
+  background: none;
+  color: var(--text);
+}
+
+.share-history {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.share-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+
+.share-link:hover {
+  background: var(--chrome-2);
+}

@@ -6,6 +6,7 @@ import { Camera, CloudUpload, Info, Link2, Maximize2, Minus, PencilRuler, Play, 
 import { formatAccelerator, patchSettings, type SettingsData } from "./Settings";
 import { t } from "./i18n";
 import { BigButton, Menu, type MenuItem } from "./ui";
+import { type Share, SharePanel } from "./SharePanel";
 
 /** Mirrors `Capture` in src-tauri/src/library.rs. */
 interface Capture {
@@ -18,14 +19,6 @@ interface Capture {
 /** Mirrors `Service` in src-tauri/src/share.rs. */
 type Service = "litterbox" | "catbox";
 
-/** Mirrors `Share` in src-tauri/src/share.rs. */
-interface Share {
-  name: string;
-  url: string;
-  service: Service;
-  uploaded_ms: number;
-  expires_ms: number | null;
-}
 
 const HOSTS: Record<Service, string> = { litterbox: "litterbox.catbox.moe", catbox: "catbox.moe" };
 
@@ -116,7 +109,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   };
 
   /** Asks once that links are public, then uploads. */
-  const share = (names: string[], service: Service = settings?.share_service ?? "litterbox") => {
+  const share = (names: string[], service: Service) => {
     if (names.length === 0 || uploading) return;
     if (settings?.share_confirmed) upload(names, service);
     else {
@@ -132,6 +125,15 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
     setAskShare(null);
   };
 
+  const [sharePanel, setSharePanel] = useState(false);
+  const closeSharePanel = useCallback(() => setSharePanel(false), []);
+
+  /** Opens a new message in the mail client with the captures attached. */
+  const email = (names: string[]) =>
+    invoke<"attached" | "manual">("email_captures", { names })
+      .then((how) => how === "manual" && notify(t("share.emailManual"), true))
+      .catch((e) => notify(String(e), true));
+
   const hours = settings?.share_expiry_hours ?? 24;
   /** Share entries for menus: both hosts, plus the existing link when there is one. */
   const shareActions = (names: string[]): MenuItem[] => {
@@ -139,6 +141,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
     return [
       { label: t("share.temporary", { hours }), onSelect: () => share(names, "litterbox"), disabled: uploading },
       { label: t("share.permanent"), onSelect: () => share(names, "catbox"), disabled: uploading },
+      { label: t("share.email"), onSelect: () => email(names) },
       ...(link ? [{ label: t("share.copyLink"), onSelect: () => copyLinks([link]) }] : []),
     ];
   };
@@ -410,14 +413,31 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
           onClick={() => selected && edit(selected)}
           menu={selected ? itemActions(selected).slice(1) : undefined}
         />
-        <BigButton
-          icon={<CloudUpload size={28} />}
-          label={t("gallery.publish")}
-          ring="#2d8cff"
-          disabled={selection.length === 0 || uploading}
-          onClick={() => share(selection)}
-          menu={selection.length > 0 ? shareActions(selection) : undefined}
-        />
+        <div className="share-anchor">
+          <BigButton
+            icon={<CloudUpload size={28} />}
+            label={t("gallery.publish")}
+            ring="#2d8cff"
+            disabled={uploading}
+            onClick={() => {
+              if (!sharePanel) refreshShares();
+              setSharePanel(!sharePanel);
+            }}
+          />
+          {sharePanel && (
+            <SharePanel
+              count={selection.length}
+              hours={hours}
+              shares={shares}
+              onTemporary={() => share(selection, "litterbox")}
+              onPermanent={() => share(selection, "catbox")}
+              onEmail={() => email(selection)}
+              onCopy={(url) => copyLinks([url])}
+              onSettings={() => invoke("open_settings")}
+              onClose={closeSharePanel}
+            />
+          )}
+        </div>
         <div className="spacer" />
         <BigButton icon={<X size={28} />} label={t("common.close")} ring="#f76b15" onClick={() => win.hide()} />
       </footer>

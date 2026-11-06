@@ -139,9 +139,6 @@ export const it = {
   "share.dontAsk": "Non chiedere più",
   "share.upload": "Carica",
   "settings.sharing": "Condivisione",
-  "settings.shareService": "Servizio predefinito",
-  "settings.shareLitterbox": "Litterbox (link temporaneo)",
-  "settings.shareCatbox": "Catbox (link permanente)",
   "settings.shareExpiry": "Durata dei link temporanei",
   "settings.shareHours": "{hours} h",
   "settings.shareHint": "I link sono pubblici: chiunque li abbia può vedere il file. Servizi anonimi, senza account.",
@@ -169,6 +166,17 @@ export const it = {
   "update.upToDate": "Hai già l'ultima versione",
   "settings.checkUpdates": "Cerca aggiornamenti automaticamente",
   "update.unreachable": "Impossibile verificare gli aggiornamenti: informazioni sulla versione non raggiungibili.",
+  "share.temporaryDetail": "Scade dopo {hours} ore · litterbox.catbox.moe",
+  "share.permanentDetail": "catbox.moe · non si potrà cancellare",
+  "share.email": "Invia per e-mail",
+  "share.emailDetail": "Allegata a un nuovo messaggio del client di posta",
+  "share.emailManual": "Nessun client di posta compatibile: ho aperto un messaggio vuoto e la cartella del file, trascinalo nel messaggio.",
+  "share.history": "Storico",
+  "share.back": "Indietro",
+  "share.noHistory": "Nessun link condiviso",
+  "share.expires": "scade {date}",
+  "share.permanentShort": "permanente",
+  "share.selectFirst": "Seleziona prima una o più catture.",
 };
 
 export type Key = keyof typeof it;

@@ -31,8 +31,6 @@ pub struct Settings {
     pub max_captures: u32,
     /// UI language: "auto" (system locale), "it" or "en". See src-tauri/src/i18n.rs.
     pub language: String,
-    /// Default host for "Share": "litterbox" (temporary link) or "catbox" (permanent).
-    pub share_service: String,
     /// Lifetime of Litterbox links, in hours (see `share::EXPIRY_HOURS`).
     pub share_expiry_hours: u32,
     /// The user accepted that shared links are public; the gallery stops asking.
@@ -65,7 +63,6 @@ impl Default for Settings {
             hotkeys: Hotkeys::default(),
             max_captures: 0,
             language: "auto".into(),
-            share_service: "litterbox".into(),
             share_expiry_hours: 24,
             share_confirmed: false,
             check_updates: true,
