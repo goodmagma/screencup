@@ -50,11 +50,8 @@ fn anchor_bottom_right(app: &AppHandle, w: &tauri::WebviewWindow) {
     let _ = w.set_position(PhysicalPosition::new(x.max(area.position.x), y.max(area.position.y)));
 }
 
-/// Opens the editor for a capture in its own window, or focuses it when already open.
-/// Async on purpose: building a window from a synchronous command deadlocks on Windows.
-/// Simplified high-contrast icon (tray-icon.svg) for the tray and window title/taskbar
-/// icons. The default window icon is the largest layer of icon.ico, which turns muddy
-/// when Windows scales it down to taskbar size.
+/// The app icon (app-icon.svg) as a 64 px PNG, for the tray and the window title/taskbar
+/// icons, which Windows would otherwise scale down from the 256 px layer of icon.ico.
 pub fn small_icon() -> tauri::image::Image<'static> {
     tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png")).expect("valid tray.png")
 }
@@ -90,6 +87,8 @@ pub fn refresh_tray_menu(app: &AppHandle) {
     }
 }
 
+/// Opens the editor for a capture in its own window, or focuses it when already open.
+/// Async on purpose: building a window from a synchronous command deadlocks on Windows.
 #[tauri::command]
 async fn open_editor(app: AppHandle, name: String) -> Result<(), String> {
     let label: String = format!("edit-{name}")
