@@ -16,10 +16,12 @@ use crate::capture::Area;
 
 const LABEL: &str = "clickfx";
 /// Event the effect window listens to.
+#[cfg_attr(not(windows), allow(dead_code))] // used by the Windows click polling only
 const EVENT: &str = "click-fx";
 
 /// A press, in physical pixels relative to the top-left of the recorded area.
 #[derive(Clone, Serialize)]
+#[cfg_attr(not(windows), allow(dead_code))] // used by the Windows click polling only
 struct Click {
     x: i32,
     y: i32,

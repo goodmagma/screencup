@@ -20,6 +20,7 @@ use crate::library;
 #[serde(rename_all = "lowercase")]
 pub enum Sent {
     /// The mail client opened with the files attached (or the user closed it).
+    #[cfg_attr(not(windows), allow(dead_code))] // Simple MAPI is Windows-only
     Attached,
     /// Fallback: a blank message plus the files shown in their folder.
     Manual,

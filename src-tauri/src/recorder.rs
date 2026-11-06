@@ -59,6 +59,7 @@ const FRAME_CORNER: f64 = FRAME_MARGIN + 6.0;
 const FRAME_GRIP: f64 = 44.0;
 /// Box for the size label at the top right inside the area, in logical pixels; the window
 /// shape keeps it visible. Keep in sync with `.recframe-size` in src/styles.css.
+#[cfg_attr(not(windows), allow(dead_code))] // used by the Windows window shape only
 const FRAME_LABEL_BOX: (f64, f64) = (96.0, 22.0);
 
 /// One stretch of recording between start / resume and pause / stop.

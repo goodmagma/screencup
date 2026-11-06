@@ -30,7 +30,8 @@ jobs:
         include:
           - os: windows-latest
             bundles: nsis
-          - os: ubuntu-22.04
+          # 24.04: the PipeWire bindings of the screen capture need PipeWire newer than 22.04's.
+          - os: ubuntu-24.04
             bundles: deb,appimage
           - os: macos-latest
             bundles: app,dmg
@@ -87,6 +88,27 @@ jobs:
 
       - run: npm ci
 
+      # Release text: docs/release-notes/<tag>.md (what changed), then the install notes.
+      - name: Release notes
+        if: env.TAG != ''
+        shell: bash
+        run: |
+          notes="docs/release-notes/$TAG.md"
+          {
+            echo "RELEASE_BODY<<__NOTES__"
+            if [ -f "$notes" ]; then cat "$notes"; echo; else echo "::warning::$notes not found" >&2; fi
+            cat <<'EOF'
+          ## Install
+
+          **Windows**: download `Screencup_*_x64-setup.exe` and run it. No administrator rights needed. SmartScreen may warn that the app is not recognised, because the installer is not signed yet: choose "More info", then "Run anyway".
+
+          **Linux**: the `.AppImage` runs on most distributions (`chmod +x`, then start it); the `.deb` is for Debian and Ubuntu.
+
+          **macOS** (Apple silicon): open the `.dmg` and drag Screencup to Applications. The app is not notarised yet: the first time, right-click it and choose Open. Screen recording needs the permission in System Settings, Privacy & Security.
+          EOF
+            echo "__NOTES__"
+          } >> "$GITHUB_ENV"
+
       # beforeBuildCommand builds the overlay, copies ffmpeg and collects the licences.
       # The updater files are signed with the key pair made by `tauri signer generate`: the
       # public key is in tauri.conf.json, the private one is a repository secret.
@@ -99,12 +121,7 @@ jobs:
           args: --bundles ${{ matrix.bundles }}
           tagName: ${{ env.TAG }}
           releaseName: Screencup ${{ env.TAG }}
-          releaseBody: |
-            **Windows**: download `Screencup_*_x64-setup.exe` and run it. No administrator rights needed. SmartScreen may warn that the app is not recognised, because the installer is not signed yet: choose "More info", then "Run anyway".
-
-            **Linux**: the `.AppImage` runs on most distributions (`chmod +x`, then start it); the `.deb` is for Debian and Ubuntu.
-
-            **macOS** (Apple silicon): open the `.dmg` and drag Screencup to Applications. The app is not notarised yet: the first time, right-click it and choose Open. Screen recording needs the permission in System Settings, Privacy & Security.
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: false
           # Not a pre-release: the updater follows releases/latest, which skips pre-releases.
           prerelease: false
