@@ -1,5 +1,5 @@
 # Builds Screencup for Windows, Linux and macOS.
-# - A version tag (`git tag -a v0.1.2 -F docs/release-notes/v0.1.2.md && git push origin v0.1.2`) builds all three and publishes
+# - A version tag (`git tag -a --cleanup=verbatim v0.1.2 -F docs/release-notes/v0.1.2.md && git push origin v0.1.2`) builds all three and publishes
 #   them as a GitHub Release, with the signed updater files and latest.json.
 # - From the Actions tab ("Run workflow") it builds by hand: with a tag it releases that tag,
 #   without one it only keeps the bundles as workflow artifacts, to test a build.
