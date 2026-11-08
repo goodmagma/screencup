@@ -54,6 +54,22 @@ jobs:
       # Signs the installer for the in-app updater and uploads latest.json, which the app reads
       # from releases/latest. The key pair was made with `tauri signer generate`; the public
       # key is in tauri.conf.json, the private one is a repository secret.
+      # Release text: docs/release-notes/<tag>.md (what changed), then the install notes.
+      - name: Release notes
+        shell: bash
+        run: |
+          notes="docs/release-notes/$TAG.md"
+          {
+            echo "RELEASE_BODY<<__NOTES__"
+            if [ -f "$notes" ]; then cat "$notes"; echo; else echo "::warning::$notes not found" >&2; fi
+            cat <<'EOF'
+          ## Install
+
+          Download `Screencup_*_x64-setup.exe` below and run it. No administrator rights needed. Windows SmartScreen may warn that the app is not recognised, because the installer is not signed yet: choose "More info", then "Run anyway".
+          EOF
+            echo "__NOTES__"
+          } >> "$GITHUB_ENV"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,10 +78,7 @@ jobs:
         with:
           tagName: ${{ env.TAG }}
           releaseName: Screencup ${{ env.TAG }}
-          releaseBody: |
-            Windows installer: download `Screencup_*_x64-setup.exe` below and run it. No administrator rights needed.
-
-            Windows SmartScreen may warn that the app is not recognised, because the installer is not signed yet. Choose "More info", then "Run anyway".
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: false
           # Not a pre-release: the updater follows releases/latest, which skips pre-releases.
           prerelease: false
