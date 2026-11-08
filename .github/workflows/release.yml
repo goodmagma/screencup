@@ -1,5 +1,5 @@
 # Builds Screencup for Windows, Linux and macOS.
-# - A version tag (`git tag v0.3.0 && git push origin v0.3.0`) builds all three and publishes
+# - A version tag (`git tag -a v0.1.1 -F docs/release-notes/v0.1.1.md && git push origin v0.1.1`) builds all three and publishes
 #   them as a GitHub Release, with the signed updater files and latest.json.
 # - From the Actions tab ("Run workflow") it builds by hand: with a tag it releases that tag,
 #   without one it only keeps the bundles as workflow artifacts, to test a build.
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to build and release (e.g. v0.3.0); empty builds only"
+        description: "Existing tag to build and release (e.g. v0.1.1); empty builds only"
         required: false
 
 permissions:

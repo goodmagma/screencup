@@ -77,7 +77,7 @@ export interface Doc {
   scale?: number;
 }
 
-/** Stored as `<library>/.originals/<name>.json`. `crop` and `scale` arrived in 0.2.0. */
+/** Stored as `<library>/.originals/<name>.json`. `crop` and `scale` arrived in 0.1.1. */
 export interface Annotations {
   version: 1;
   shapes: Shape[];
