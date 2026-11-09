@@ -249,4 +249,8 @@ export const fr: Record<Key, string> = {
   "sc.playPause": "Lecture / pause",
   "gallery.print": "Imprimer…",
   "gallery.printMany": "Imprimer {count} images…",
+  "editor.pasteImage": "Coller une image",
+  "editor.pasteImageHint": "Colle une image du presse-papiers sur la capture",
+  "editor.pasteEmpty": "Le presse-papiers ne contient pas d'image",
+  "sc.pasteImage": "Coller une image du presse-papiers",
 };

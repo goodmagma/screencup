@@ -78,3 +78,32 @@ pub async fn paste_capture(app: AppHandle) -> Result<Vec<std::path::PathBuf>, St
     .map_err(|e| e.to_string())??;
     library::announce_imports(&app, imported, errors)
 }
+
+/// Ctrl+V in the editor: the clipboard image, or the first image among the files copied in
+/// the file manager, as PNG bytes. Empty when the clipboard holds neither.
+#[tauri::command]
+pub async fn clipboard_image(app: AppHandle) -> Result<tauri::ipc::Response, String> {
+    let png = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        let state = app.state::<Clipboard>();
+        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+        if guard.is_none() {
+            *guard = Some(arboard::Clipboard::new().map_err(|e| e.to_string())?);
+        }
+        let clipboard = guard.as_mut().expect("clipboard initialised above");
+        let img = match clipboard.get().file_list() {
+            Ok(files) if !files.is_empty() => files.iter().find_map(|f| image::open(f).ok()).map(|i| i.to_rgba8()),
+            _ => clipboard
+                .get_image()
+                .ok()
+                .and_then(|d| image::RgbaImage::from_raw(d.width as u32, d.height as u32, d.bytes.into_owned())),
+        };
+        drop(guard);
+        let Some(img) = img else { return Ok(Vec::new()) };
+        let mut out = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut out, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+        Ok(out.into_inner())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(png))
+}

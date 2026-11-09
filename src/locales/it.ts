@@ -254,6 +254,10 @@ export const it = {
   "sc.playPause": "Riproduci / pausa",
   "gallery.print": "Stampa…",
   "gallery.printMany": "Stampa {count} immagini…",
+  "editor.pasteImage": "Incolla immagine",
+  "editor.pasteImageHint": "Incolla un'immagine dagli appunti sopra la cattura",
+  "editor.pasteEmpty": "Negli appunti non c'è un'immagine",
+  "sc.pasteImage": "Incolla un'immagine dagli appunti",
 };
 
 export type Key = keyof typeof it;

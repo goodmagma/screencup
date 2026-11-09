@@ -249,4 +249,8 @@ export const es: Record<Key, string> = {
   "sc.playPause": "Reproducir / pausa",
   "gallery.print": "Imprimir…",
   "gallery.printMany": "Imprimir {count} imágenes…",
+  "editor.pasteImage": "Pegar imagen",
+  "editor.pasteImageHint": "Pega una imagen del portapapeles sobre la captura",
+  "editor.pasteEmpty": "El portapapeles no contiene ninguna imagen",
+  "sc.pasteImage": "Pegar una imagen del portapapeles",
 };

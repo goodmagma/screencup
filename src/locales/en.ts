@@ -249,5 +249,9 @@ export const en: Record<Key, string> = {
   "sc.playPause": "Play / pause",
   "gallery.print": "Print…",
   "gallery.printMany": "Print {count} images…",
+  "editor.pasteImage": "Paste image",
+  "editor.pasteImageHint": "Paste a picture from the clipboard onto the capture",
+  "editor.pasteEmpty": "The clipboard holds no image",
+  "sc.pasteImage": "Paste a picture from the clipboard",
 };
 

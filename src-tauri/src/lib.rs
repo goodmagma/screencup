@@ -185,6 +185,7 @@ pub fn run() {
             library::open_capture,
             library::reveal_capture,
             library::read_capture,
+            clipboard::clipboard_image,
             library::print_webview,
             clipboard::copy_capture,
             library::list_captures,

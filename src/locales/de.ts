@@ -249,4 +249,8 @@ export const de: Record<Key, string> = {
   "sc.playPause": "Wiedergabe / Pause",
   "gallery.print": "Drucken…",
   "gallery.printMany": "{count} Bilder drucken…",
+  "editor.pasteImage": "Bild einfügen",
+  "editor.pasteImageHint": "Ein Bild aus der Zwischenablage auf die Aufnahme einfügen",
+  "editor.pasteEmpty": "Die Zwischenablage enthält kein Bild",
+  "sc.pasteImage": "Bild aus der Zwischenablage einfügen",
 };

@@ -249,4 +249,8 @@ export const pt: Record<Key, string> = {
   "sc.playPause": "Reproduzir / pausar",
   "gallery.print": "Imprimir…",
   "gallery.printMany": "Imprimir {count} imagens…",
+  "editor.pasteImage": "Colar imagem",
+  "editor.pasteImageHint": "Cola uma imagem da área de transferência sobre a captura",
+  "editor.pasteEmpty": "A área de transferência não tem imagem",
+  "sc.pasteImage": "Colar uma imagem da área de transferência",
 };

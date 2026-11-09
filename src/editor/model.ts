@@ -45,14 +45,17 @@ export type CalloutShape = Base & {
 };
 export type BoxShape = Base & {
   /** "magnify": an ellipse showing the image under it at `MAGNIFY_ZOOM`; "brace": a curly
-   * brace spanning the box height, pointing right before rotation. */
-  kind: "rect" | "ellipse" | "highlight" | "blur" | "magnify" | "brace";
+   * brace spanning the box height, pointing right before rotation; "image": a picture pasted
+   * from the clipboard (Ctrl+V), stored in `src`. */
+  kind: "rect" | "ellipse" | "highlight" | "blur" | "magnify" | "brace" | "image";
   x: number;
   y: number;
   w: number;
   h: number;
   /** Degrees, clockwise. Blur and magnify are never rotated: they show the image beneath. */
   rotation?: number;
+  /** "image" only: the picture as a PNG data URL, so the annotations file is self-contained. */
+  src?: string;
 };
 export type TextShape = Base & { kind: "text"; x: number; y: number; text: string; rotation?: number };
 export type StepShape = Base & { kind: "step"; x: number; y: number; n: number };
@@ -139,7 +142,8 @@ export const isBox = (s: Shape): s is BoxShape =>
   s.kind === "highlight" ||
   s.kind === "blur" ||
   s.kind === "magnify" ||
-  s.kind === "brace";
+  s.kind === "brace" ||
+  s.kind === "image";
 
 /** Box shapes positioned by their centre in Konva (ellipses). */
 export const isCentred = (s: Shape): s is BoxShape => s.kind === "ellipse" || s.kind === "magnify";
@@ -172,7 +176,7 @@ export function isMeaningful(s: Shape): boolean {
  * A copy of the image with coarse pixel blocks. Blur shapes show this copy clipped to their
  * box, so the exported PNG really contains destroyed pixels, not a reversible overlay.
  */
-export function pixelate(img: HTMLImageElement): HTMLCanvasElement {
+export function pixelate(img: HTMLImageElement | HTMLCanvasElement): HTMLCanvasElement {
   const block = Math.max(8, Math.round(Math.max(img.width, img.height) / 160));
   const small = document.createElement("canvas");
   small.width = Math.max(1, Math.ceil(img.width / block));

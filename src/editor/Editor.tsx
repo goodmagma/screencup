@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KonvaEventObject, Node as KonvaNode } from "konva/lib/Node";
 import type Konva from "konva";
 import { invoke } from "@tauri-apps/api/core";
@@ -10,10 +10,10 @@ import {
   MessageSquare,
   Pentagon,
   ScanText,
+  ClipboardPaste,
   Copy,
   Crop as CropIcon,
   FileDown,
-  Grid3x3,
   Highlighter,
   LogOut,
   Minus,
@@ -92,6 +92,28 @@ interface TextEdit {
   box?: { w: number; h: number };
 }
 
+/** Decoded pasted pictures by data URL, so a pasted shape renders (and can be selected) at once. */
+const pastedImages = new Map<string, HTMLImageElement>();
+
+async function loadPasted(src: string): Promise<HTMLImageElement> {
+  const cached = pastedImages.get(src);
+  if (cached) return cached;
+  const el = new window.Image();
+  el.src = src;
+  await el.decode();
+  pastedImages.set(src, el);
+  return el;
+}
+
+/** An "image" shape: its picture once decoded. */
+function PastedImage({ src, ...props }: { src: string } & Omit<ComponentProps<typeof KImage>, "image">) {
+  const [el, setEl] = useState(() => pastedImages.get(src));
+  useEffect(() => {
+    if (!pastedImages.has(src)) loadPasted(src).then(setEl, () => {});
+  }, [src]);
+  return el ? <KImage image={el} {...props} /> : null;
+}
+
 const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
 const ZOOM_MIN = 0.1;
@@ -113,6 +135,18 @@ function StepIcon() {
   );
 }
 
+/** Blur tool: a pixel mosaic, as the blur really is. */
+function MosaicIcon() {
+  const shades = [1, 0.35, 0.7, 0.2, 0.55, 0.9, 0.25, 0.75, 0.3, 0.6, 1, 0.45, 0.8, 0.2, 0.5, 0.95];
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+      {shades.map((o, i) => (
+        <rect key={i} x={2 + (i % 4) * 4} y={2 + Math.floor(i / 4) * 4} width="4" height="4" fill="currentColor" opacity={o} />
+      ))}
+    </svg>
+  );
+}
+
 const TOOL_ICONS: Record<Tool, ReactNode> = {
   select: <MousePointer2 size={20} />,
   arrow: <MoveUpRight size={20} />,
@@ -124,7 +158,7 @@ const TOOL_ICONS: Record<Tool, ReactNode> = {
   rect: <Square size={20} />,
   ellipse: <CircleIcon size={20} />,
   highlight: <Highlighter size={20} />,
-  blur: <Grid3x3 size={20} />,
+  blur: <MosaicIcon />,
   magnify: <ZoomIn size={20} />,
   text: <Type size={20} />,
   step: <StepIcon />,
@@ -293,6 +327,9 @@ export function Editor({ name, onClose, notify }: Props) {
       if (cancelled) return;
       const parsed: Annotations | null = json ? JSON.parse(json) : null;
       const loaded: Doc = { shapes: parsed?.shapes ?? [], crop: parsed?.crop, scale: parsed?.scale };
+      // Decoded before the first render, so saving right away keeps the pasted pictures.
+      await Promise.all(loaded.shapes.map((s) => (s.kind === "image" && s.src ? loadPasted(s.src) : null)));
+      if (cancelled) return;
       setImg(image);
       setHistory(historyOf(loaded));
       setSaved(loaded);
@@ -324,7 +361,32 @@ export function Editor({ name, onClose, notify }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  const pixelated = useMemo(() => (img ? pixelate(img) : null), [img]);
+  // What blur and magnify show: the capture with the pasted pictures drawn on it, so they are
+  // blurred and magnified too. Rebuilt only when a picture is added, moved or resized; the
+  // stacking order is ignored, since a picture covers whatever lies under it anyway.
+  const picturesKey = JSON.stringify(
+    (shapes.filter((s) => s.kind === "image") as BoxShape[]).map((s) => [s.id, s.x, s.y, s.w, s.h, s.rotation ?? 0]),
+  );
+  const backdrop = useMemo(() => {
+    if (!img) return null;
+    const pictures = shapes.filter((s) => s.kind === "image" && s.src && pastedImages.has(s.src)) as BoxShape[];
+    if (pictures.length === 0) return img;
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    for (const p of pictures) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(((p.rotation ?? 0) * Math.PI) / 180);
+      ctx.drawImage(pastedImages.get(p.src!)!, 0, 0, p.w, p.h);
+      ctx.restore();
+    }
+    return canvas;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img, picturesKey]);
+  const pixelated = useMemo(() => (backdrop ? pixelate(backdrop) : null), [backdrop]);
   const scale = img ? sizeScale(img.width, img.height) : 1;
   const strokeWidth = SIZES[sizeIdx] * scale;
   const zoom = !img
@@ -507,7 +569,9 @@ export function Editor({ name, onClose, notify }: Props) {
    */
   const squareBox = (_oldBox: TransformBox, newBox: TransformBox): TransformBox => {
     const anchor = trRef.current?.getActiveAnchor() ?? "";
-    if (!shiftRef.current || anchor === "rotater" || Math.abs(newBox.rotation) > 1e-3) return newBox;
+    // Pictures keep their proportions instead; Shift frees them (Konva's keepRatio).
+    if (!shiftRef.current || selected?.kind === "image" || anchor === "rotater" || Math.abs(newBox.rotation) > 1e-3)
+      return newBox;
     const { x, y, width: w, height: h } = newBox;
     const side = anchor.endsWith("center") ? h : anchor.startsWith("middle") ? w : Math.max(w, h);
     return {
@@ -747,7 +811,7 @@ export function Editor({ name, onClose, notify }: Props) {
             y={cy}
             radiusX={Math.abs(s.w) / 2}
             radiusY={Math.abs(s.h) / 2}
-            fillPatternImage={img ?? undefined}
+            fillPatternImage={(backdrop ?? undefined) as HTMLImageElement | undefined}
             fillPatternScaleX={MAGNIFY_ZOOM}
             fillPatternScaleY={MAGNIFY_ZOOM}
             fillPatternOffsetX={cx}
@@ -849,6 +913,20 @@ export function Editor({ name, onClose, notify }: Props) {
           />
         );
       }
+      case "image":
+        return (
+          <PastedImage
+            key={s.id}
+            {...handlers}
+            onTransformEnd={onTransformEnd(s)}
+            src={s.src ?? ""}
+            x={s.x}
+            y={s.y}
+            width={s.w}
+            height={s.h}
+            rotation={s.rotation ?? 0}
+          />
+        );
       case "rect":
         return (
           <Rect
@@ -1131,6 +1209,47 @@ export function Editor({ name, onClose, notify }: Props) {
   const undo = () => setHistory((h) => ({ ...h, index: Math.max(0, h.index - 1) }));
   const redo = () => setHistory((h) => ({ ...h, index: Math.min(h.stack.length - 1, h.index + 1) }));
 
+  /**
+   * Ctrl+V: the clipboard picture becomes an "image" shape, centred on the image and scaled
+   * down to fit, then selected to move or resize.
+   */
+  const pasteImage = async () => {
+    if (!img) return;
+    try {
+      const bytes = await invoke<ArrayBuffer | number[]>("clipboard_image");
+      const data = Array.isArray(bytes) ? new Uint8Array(bytes) : new Uint8Array(bytes);
+      if (data.length === 0) {
+        notify(tr("editor.pasteEmpty"));
+        return;
+      }
+      const src = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(new Blob([data], { type: "image/png" }));
+      });
+      const el = await loadPasted(src);
+      const k = Math.min(1, (crop.w * 0.8) / el.width, (crop.h * 0.8) / el.height);
+      const [w, h] = [el.width * k, el.height * k];
+      const shape: BoxShape = {
+        id: crypto.randomUUID(),
+        kind: "image",
+        color,
+        width: strokeWidth,
+        x: crop.x + (crop.w - w) / 2,
+        y: crop.y + (crop.h - h) / 2,
+        w,
+        h,
+        src,
+      };
+      commit([...shapes, shape]);
+      setTool("select");
+      setSelectedId(shape.id);
+    } catch (e) {
+      notify(String(e));
+    }
+  };
+
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
     if (textEdit || askClose || resizeOpen || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement)
@@ -1141,6 +1260,7 @@ export function Editor({ name, onClose, notify }: Props) {
     else if (mod && key === "y") redo();
     else if (mod && key === "s") save();
     else if (mod && key === "c") copyImage();
+    else if (mod && key === "v") pasteImage();
     else if (e.key === "Delete" || e.key === "Backspace") removeSelected();
     else if (polyRef.current && e.key === "Enter") finishPolygon(polyRef.current.slice(0, -2));
     else if (e.key === "Escape") {
@@ -1214,6 +1334,14 @@ export function Editor({ name, onClose, notify }: Props) {
           onClick={copyImage}
           disabled={busy}
           title="Ctrl+C"
+        />
+        <RibbonButton
+          icon={<ClipboardPaste size={20} />}
+          tint="#2d8cff"
+          label={tr("editor.pasteImage")}
+          onClick={pasteImage}
+          disabled={busy}
+          title={`${tr("editor.pasteImageHint")} (Ctrl+V)`}
         />
         {navigator.userAgent.includes("Windows") && (
           <RibbonButton
@@ -1348,7 +1476,7 @@ export function Editor({ name, onClose, notify }: Props) {
                             "middle-left",
                           ]
                     }
-                    keepRatio={false}
+                    keepRatio={selected?.kind === "image"}
                     boundBoxFunc={squareBox}
                     ignoreStroke
                     flipEnabled={false}
