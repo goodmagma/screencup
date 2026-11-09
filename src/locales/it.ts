@@ -249,7 +249,7 @@ export const it = {
   "sc.removeShape": "Elimina la forma selezionata",
   "sc.deselect": "Deseleziona, poi torna a Seleziona",
   "sc.finishPolygon": "Chiudi il poligono",
-  "sc.square": "Quadrati e cerchi",
+  "sc.square": "Forme regolari, linee a 15°, proporzioni mantenute",
   "sc.zoom": "Zoom",
   "sc.playPause": "Riproduci / pausa",
 };

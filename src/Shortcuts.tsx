@@ -58,7 +58,7 @@ function sections(hotkeys: Hotkeys | undefined): { title: string; hint?: string;
         [k("key.Delete"), t("sc.removeShape")],
         [acc("Escape"), t("sc.deselect")],
         [k("key.Enter"), t("sc.finishPolygon")],
-        [`Alt + ${t("key.Drag")}`, t("sc.square")],
+        [withMod("Shift", "key.Drag"), t("sc.square")],
         [withMod("Control", "key.Wheel"), t("sc.zoom")],
         ...TOOLS.map(({ tool, key }): Row => [key.toUpperCase(), t(`tool.${tool}` as Key)]),
       ],

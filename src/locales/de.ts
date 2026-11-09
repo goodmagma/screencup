@@ -244,7 +244,7 @@ export const de: Record<Key, string> = {
   "sc.removeShape": "Ausgewählte Form löschen",
   "sc.deselect": "Auswahl aufheben, dann zurück zu Auswählen",
   "sc.finishPolygon": "Polygon abschließen",
-  "sc.square": "Quadrate und Kreise",
+  "sc.square": "Regelmäßige Formen, Linien in 15°-Schritten, Seitenverhältnis halten",
   "sc.zoom": "Zoomen",
   "sc.playPause": "Wiedergabe / Pause",
 };

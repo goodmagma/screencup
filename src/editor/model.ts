@@ -117,6 +117,22 @@ export const sizeScale = (imgW: number, imgH: number) => Math.max(1, Math.max(im
 export const fontSize = (width: number) => 10 + width * 3.5;
 export const stepRadius = (width: number) => 9 + width * 2;
 
+/** Angle step of Shift-constrained lines, as in graphics editors. */
+const SNAP_ANGLE = Math.PI / 12;
+
+/** Shift while drawing a line: (x, y) turned around (x0, y0) onto the nearest 15° direction. */
+export function snapAngle(x0: number, y0: number, x: number, y: number): [number, number] {
+  const length = Math.hypot(x - x0, y - y0);
+  const angle = Math.round(Math.atan2(y - y0, x - x0) / SNAP_ANGLE) * SNAP_ANGLE;
+  return [x0 + length * Math.cos(angle), y0 + length * Math.sin(angle)];
+}
+
+/** Shift (or Alt) while drawing a box: equal sides, keeping the drag direction. */
+export function squareOff(w: number, h: number): [number, number] {
+  const side = Math.max(Math.abs(w), Math.abs(h));
+  return [(w < 0 ? -1 : 1) * side, (h < 0 ? -1 : 1) * side];
+}
+
 export const isBox = (s: Shape): s is BoxShape =>
   s.kind === "rect" ||
   s.kind === "ellipse" ||

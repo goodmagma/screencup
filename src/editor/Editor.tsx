@@ -47,6 +47,7 @@ import {
 } from "react-konva";
 import type { Context as KonvaContext } from "konva/lib/Context";
 import type { Shape as KonvaShapeNode } from "konva/lib/Shape";
+import type { Box as TransformBox } from "konva/lib/shapes/Transformer";
 import { RibbonButton } from "../ui";
 import {
   type Annotations,
@@ -74,6 +75,8 @@ import {
   pixelate,
   push,
   sizeScale,
+  snapAngle,
+  squareOff,
   stepRadius,
 } from "./model";
 
@@ -373,7 +376,10 @@ export function Editor({ name, onClose, notify }: Props) {
         const fixed = p.slice(0, -2);
         const nearFirst = Math.hypot(x - fixed[0], y - fixed[1]) * zoom <= CLOSE_DISTANCE;
         if (nearFirst && fixed.length >= 6) finishPolygon(fixed);
-        else setPolyDraft([...fixed, x, y, x, y]);
+        else {
+          const [px, py] = e.evt.shiftKey ? snapAngle(fixed[fixed.length - 2], fixed[fixed.length - 1], x, y) : [x, y];
+          setPolyDraft([...fixed, px, py, px, py]);
+        }
         break;
       }
       case "callout":
@@ -409,40 +415,108 @@ export function Editor({ name, onClose, notify }: Props) {
     }
   };
 
-  const onStageMove = (e: KonvaEventObject<MouseEvent>) => {
+  // Shift constrains what is being drawn, as in graphics editors: boxes get equal sides,
+  // lines and polygon edges snap to 15° steps.
+  /**
+   * Updates what is being drawn to the pointer. Also run when Shift or Alt is pressed or
+   * released with the mouse still, so the shape snaps (and unsnaps) right away.
+   */
+  const applyMove = (shift: boolean, alt: boolean) => {
+    if (!stageRef.current?.getPointerPosition()) return;
     const p = polyRef.current;
     if (p) {
       const { x, y } = pointer();
-      setPolyDraft([...p.slice(0, -2), x, y]);
+      const [lx, ly] = p.length >= 4 ? p.slice(-4, -2) : [x, y];
+      setPolyDraft([...p.slice(0, -2), ...(shift ? snapAngle(lx, ly, x, y) : [x, y])]);
       return;
     }
     const c = cropDraftRef.current;
     if (c) {
       const { x, y } = pointer();
-      setCropDraft({ ...c, w: x - c.x, h: y - c.y });
+      const [w, h] = shift ? squareOff(x - c.x, y - c.y) : [x - c.x, y - c.y];
+      setCropDraft({ ...c, w, h });
       return;
     }
     const d = draftRef.current;
     if (!d) return;
     const { x, y } = pointer();
-    if (d.kind === "arrow" || d.kind === "line") setDraft({ ...d, points: [d.points[0], d.points[1], x, y] });
-    else if (d.kind === "callout") setDraft({ ...d, w: x - d.x, h: y - d.y });
+    if (d.kind === "arrow" || d.kind === "line") {
+      const [x0, y0] = d.points;
+      const [x1, y1] = shift ? snapAngle(x0, y0, x, y) : [x, y];
+      setDraft({ ...d, points: [x0, y0, x1, y1] });
+    } else if (d.kind === "callout") {
+      const [w, h] = shift ? squareOff(x - d.x, y - d.y) : [x - d.x, y - d.y];
+      setDraft({ ...d, w, h });
+    }
     else if (d.kind === "pen") {
       // Skip points closer than a screen pixel or two: smoother line, smaller document.
       const [lx, ly] = d.points.slice(-2);
       if (Math.hypot(x - lx, y - ly) >= 2 / zoom) setDraft({ ...d, points: [...d.points, x, y] });
     }
     else if (isBox(d)) {
-      let w = x - d.x;
-      let h = y - d.y;
-      // Alt keeps width and height equal (square, circle), like graphics editors do.
-      if (e.evt.altKey) {
-        const side = Math.max(Math.abs(w), Math.abs(h));
-        w = (w < 0 ? -1 : 1) * side;
-        h = (h < 0 ? -1 : 1) * side;
-      }
+      // Alt too, as it was the modifier before Shift.
+      const [w, h] = shift || alt ? squareOff(x - d.x, y - d.y) : [x - d.x, y - d.y];
       setDraft({ ...d, w, h });
     }
+  };
+  const onStageMove = (e: KonvaEventObject<MouseEvent>) => applyMove(e.evt.shiftKey, e.evt.altKey);
+  const applyMoveRef = useRef(applyMove);
+  applyMoveRef.current = applyMove;
+
+  /** Shift as last seen, for the resize handles (Konva does not pass the key state). */
+  const shiftRef = useRef(false);
+  useEffect(() => {
+    // Last mouse position and buttons, to replay a move when a modifier changes.
+    let last = { clientX: 0, clientY: 0, buttons: 0 };
+    const onMouse = (e: MouseEvent) => {
+      if (e.isTrusted) last = { clientX: e.clientX, clientY: e.clientY, buttons: e.buttons };
+    };
+    const onModifier = (e: KeyboardEvent) => {
+      if (e.key !== "Shift" && e.key !== "Alt") return;
+      if (e.repeat) return;
+      shiftRef.current = e.shiftKey;
+      if (polyRef.current || cropDraftRef.current || draftRef.current) applyMoveRef.current(e.shiftKey, e.altKey);
+      // A resize or endpoint handle being dragged: Konva follows the mouse on `window` and
+      // only recomputes on a move, so replay the last one with the new modifiers.
+      else if (last.buttons & 1)
+        window.dispatchEvent(
+          new MouseEvent("mousemove", { ...last, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey }),
+        );
+    };
+    const reset = () => (shiftRef.current = false);
+    window.addEventListener("mousemove", onMouse);
+    window.addEventListener("mousedown", onMouse);
+    window.addEventListener("mouseup", onMouse);
+    window.addEventListener("keydown", onModifier);
+    window.addEventListener("keyup", onModifier);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("mousemove", onMouse);
+      window.removeEventListener("mousedown", onMouse);
+      window.removeEventListener("mouseup", onMouse);
+      window.removeEventListener("keydown", onModifier);
+      window.removeEventListener("keyup", onModifier);
+      window.removeEventListener("blur", reset);
+    };
+  }, []);
+
+  /**
+   * Resize handles: with Shift the box becomes a square (circle), as in Paint.NET, instead of
+   * Konva's default of keeping the current proportions. The corner or edge opposite the dragged
+   * handle stays put. Rotated boxes and the rotation handle keep Konva's behaviour.
+   */
+  const squareBox = (_oldBox: TransformBox, newBox: TransformBox): TransformBox => {
+    const anchor = trRef.current?.getActiveAnchor() ?? "";
+    if (!shiftRef.current || anchor === "rotater" || Math.abs(newBox.rotation) > 1e-3) return newBox;
+    const { x, y, width: w, height: h } = newBox;
+    const side = anchor.endsWith("center") ? h : anchor.startsWith("middle") ? w : Math.max(w, h);
+    return {
+      ...newBox,
+      x: anchor.includes("left") ? x + w - side : x,
+      y: anchor.startsWith("top") ? y + h - side : y,
+      width: side,
+      height: side,
+    };
   };
 
   // Released anywhere, even outside the canvas. The new shape is selected right away.
@@ -582,10 +656,13 @@ export function Editor({ name, onClose, notify }: Props) {
     update(s.id, (sh) => ({ ...sh, x, y, w, h, rotation }));
   };
 
-  const moveEndpoint = (s: LineShape, end: 0 | 1, node: KonvaNode) => {
+  /** Shapes with one end of `s` moved to the handle `node`; Shift snaps the line to 15° steps. */
+  const moveEndpoint = (s: LineShape, end: 0 | 1, node: KonvaNode, shift: boolean) => {
     const points = [...s.points] as LineShape["points"];
-    points[end * 2] = node.x() + HANDLE / zoom / 2;
-    points[end * 2 + 1] = node.y() + HANDLE / zoom / 2;
+    let [x, y] = [node.x() + HANDLE / zoom / 2, node.y() + HANDLE / zoom / 2];
+    if (shift) [x, y] = snapAngle(points[(1 - end) * 2], points[(1 - end) * 2 + 1], x, y);
+    points[end * 2] = x;
+    points[end * 2 + 1] = y;
     return shapes.map((sh) => (sh.id === s.id ? { ...s, points } : sh));
   };
 
@@ -933,9 +1010,9 @@ export function Editor({ name, onClose, notify }: Props) {
         draggable
         onMouseEnter={() => setCursor("crosshair")}
         onMouseLeave={() => setCursor("")}
-        onDragMove={(e) => setPreview(moveEndpoint(selected, end, e.target))}
+        onDragMove={(e) => setPreview(moveEndpoint(selected, end, e.target, e.evt.shiftKey))}
         onDragEnd={(e) => {
-          commit(moveEndpoint(selected, end, e.target));
+          commit(moveEndpoint(selected, end, e.target, e.evt.shiftKey));
           setPreview(null);
         }}
       />
@@ -1272,6 +1349,7 @@ export function Editor({ name, onClose, notify }: Props) {
                           ]
                     }
                     keepRatio={false}
+                    boundBoxFunc={squareBox}
                     ignoreStroke
                     flipEnabled={false}
                     anchorSize={HANDLE}
