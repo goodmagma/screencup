@@ -3,11 +3,12 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { Camera, CloudUpload, ImageDown, Info, Link2, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
+import { Camera, CircleHelp, CloudUpload, ImageDown, Info, Link2, Maximize2, Minus, PencilRuler, Play, Settings, Video, X } from "lucide-react";
 import { formatAccelerator, patchSettings, type SettingsData } from "./Settings";
 import { t } from "./i18n";
 import { BigButton, Menu, type MenuItem } from "./ui";
 import { type Share, SharePanel } from "./SharePanel";
+import { Shortcuts } from "./Shortcuts";
 
 /** Mirrors `Capture` in src-tauri/src/library.rs. */
 interface Capture {
@@ -54,6 +55,8 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   };
   const [context, setContext] = useState<{ x: number; y: number; name: string } | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const closeShortcuts = useCallback(() => setShowShortcuts(false), []);
   /** Files dragged over the window; see `import_captures` in src-tauri/src/library.rs. */
   const [dropping, setDropping] = useState(false);
   const importing = useRef(false);
@@ -334,8 +337,13 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // The summary handles its own keys; Delete must not remove captures behind it.
+      if (showShortcuts) return;
       const mod = e.ctrlKey || e.metaKey;
-      if (e.key === "Escape") win.hide();
+      if (e.key === "F1") {
+        e.preventDefault();
+        setShowShortcuts(true);
+      } else if (e.key === "Escape") win.hide();
       else if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
         setSelection(captures.map((c) => c.name));
@@ -385,6 +393,9 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
         <img src="/app-icon.svg" alt="" className="titlebar-icon" data-tauri-drag-region />
         <span data-tauri-drag-region>Screencup</span>
         <div className="titlebar-buttons">
+          <button onClick={() => setShowShortcuts(true)} title={`${t("shortcuts.title")} (F1)`}>
+            <CircleHelp size={15} />
+          </button>
           <button onClick={() => invoke("open_about")} title={t("gallery.about")}>
             <Info size={15} />
           </button>
@@ -471,7 +482,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
             { label: t("gallery.captureRegion") + hotkeyHint(settings?.hotkeys.capture_region), onSelect: () => capture("region") },
             { label: t("gallery.captureScreen") + hotkeyHint(settings?.hotkeys.capture_screen), onSelect: () => capture("screen") },
             { label: t("gallery.captureAll") + hotkeyHint(settings?.hotkeys.capture_all), onSelect: () => capture("all") },
-            { label: t("gallery.pickColor"), onSelect: () => capture("color") },
+            { label: t("gallery.pickColor") + hotkeyHint(settings?.hotkeys.pick_color), onSelect: () => capture("color") },
             { label: `${t("paste.menu")} (Ctrl+V)`, onSelect: paste },
           ]}
         />
@@ -531,6 +542,8 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
         <div className="spacer" />
         <BigButton icon={<X size={28} />} label={t("common.close")} ring="#f76b15" onClick={() => win.hide()} />
       </footer>
+
+      {showShortcuts && <Shortcuts hotkeys={settings?.hotkeys} onClose={closeShortcuts} />}
 
       {askShare && (
         <div className="modal-backdrop" style={{ position: "fixed" }}>

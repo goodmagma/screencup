@@ -32,6 +32,7 @@ pub fn apply(app: &AppHandle, keys: &Hotkeys) -> Vec<String> {
         (tr("capture-all"), &keys.capture_all, Action::Capture(CaptureKind::All)),
         (tr("record-region"), &keys.record_region, Action::Record(RecordKind::Region)),
         (tr("record-screen"), &keys.record_screen, Action::Record(RecordKind::Screen)),
+        (tr("pick-color"), &keys.pick_color, Action::Capture(CaptureKind::Color)),
     ];
     let mut failures = Vec::new();
     let mut bound = HashMap::new();

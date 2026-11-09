@@ -34,20 +34,22 @@ export async function patchSettings(patch: Partial<SettingsData>): Promise<strin
 }
 
 /** Mirrors `Hotkeys` in src-tauri/src/settings.rs. */
-interface Hotkeys {
+export interface Hotkeys {
   capture_region: string;
   capture_screen: string;
   capture_all: string;
   record_region: string;
   record_screen: string;
+  pick_color: string;
 }
 
-const HOTKEY_ROWS: { key: keyof Hotkeys; label: Key }[] = [
+export const HOTKEY_ROWS: { key: keyof Hotkeys; label: Key }[] = [
   { key: "capture_region", label: "settings.hkCaptureRegion" },
   { key: "capture_screen", label: "settings.hkCaptureScreen" },
   { key: "capture_all", label: "settings.hkCaptureAll" },
   { key: "record_region", label: "settings.hkRecordRegion" },
   { key: "record_screen", label: "settings.hkRecordScreen" },
+  { key: "pick_color", label: "gallery.pickColor" },
 ];
 
 /** Languages offered besides "auto"; each named in its own language. */

@@ -598,6 +598,66 @@ button.size.active {
   gap: 8px;
 }
 
+/* --- keyboard shortcuts summary (src/Shortcuts.tsx) ----------------------------------- */
+
+.shortcuts-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+}
+
+.shortcuts-modal h3 {
+  margin: 0 0 10px;
+}
+
+.shortcuts-body {
+  overflow-y: auto;
+  margin-bottom: 14px;
+  padding-right: 6px;
+  columns: 2 320px;
+  column-gap: 28px;
+}
+
+.shortcuts-body section {
+  break-inside: avoid;
+  margin-bottom: 14px;
+}
+
+.shortcuts-body h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--accent, #2d8cff);
+}
+
+.shortcuts-hint {
+  font-weight: normal;
+  opacity: 0.7;
+}
+
+.shortcuts-body dl {
+  margin: 0;
+}
+
+.shortcuts-body dl > div {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.shortcuts-body dt,
+.shortcuts-body dd {
+  margin: 0;
+}
+
+.shortcuts-body kbd {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* --- recording panel (window size: BAR_SIZE in src-tauri/src/recorder.rs) --------------- */
 
 .recbar {

@@ -50,6 +50,7 @@ pub struct Hotkeys {
     pub capture_all: String,
     pub record_region: String,
     pub record_screen: String,
+    pub pick_color: String,
 }
 
 impl Default for Settings {
@@ -81,6 +82,7 @@ impl Default for Hotkeys {
             capture_all: String::new(),
             record_region: "Control+PrintScreen".into(),
             record_screen: "Control+Shift+PrintScreen".into(),
+            pick_color: "Control+Alt+KeyC".into(),
         }
     }
 }
