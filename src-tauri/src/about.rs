@@ -1,7 +1,7 @@
 //! The "About Screencup" window: version, project page, licences.
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 
 const LABEL: &str = "about";
@@ -40,16 +40,25 @@ pub fn open_licenses(app: AppHandle) -> Result<(), String> {
 /// Async: building a window from a synchronous command deadlocks on Windows.
 #[tauri::command]
 pub async fn open_about(app: AppHandle) -> Result<(), String> {
-    show(&app)
+    show(&app, false)
 }
 
-pub fn show(app: &AppHandle) -> Result<(), String> {
+/// Opens (or focuses) the window. With `check_updates` it also starts "Check for updates",
+/// as the tray menu item of that name does.
+pub fn show(app: &AppHandle, check_updates: bool) -> Result<(), String> {
     if let Some(w) = app.get_webview_window(LABEL) {
         let _ = w.unminimize();
+        if check_updates {
+            let _ = app.emit_to(LABEL, "about-check-updates", ());
+        }
         return w.set_focus().map_err(|e| e.to_string());
     }
+    let mut init = String::from("window.__SCREENCUP_ABOUT__ = true;");
+    if check_updates {
+        init.push_str("window.__SCREENCUP_ABOUT_CHECK__ = true;");
+    }
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
-        .initialization_script("window.__SCREENCUP_ABOUT__ = true;")
+        .initialization_script(&init)
         .title(crate::i18n::text(app, "about"))
         .icon(crate::small_icon())
         .map_err(|e| e.to_string())?

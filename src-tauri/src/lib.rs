@@ -77,6 +77,7 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &item("gallery", tr("open-gallery"))?,
             &item("settings", tr("settings-menu"))?,
+            &item("check-updates", tr("check-updates"))?,
             &item("about", tr("about"))?,
             &PredefinedMenuItem::separator(app)?,
             &item("quit", tr("quit"))?,
@@ -230,8 +231,8 @@ pub fn run() {
                             eprintln!("settings window: {e}");
                         }
                     }
-                    "about" => {
-                        if let Err(e) = about::show(app) {
+                    "about" | "check-updates" => {
+                        if let Err(e) = about::show(app, event.id.as_ref() == "check-updates") {
                             eprintln!("about window: {e}");
                         }
                     }

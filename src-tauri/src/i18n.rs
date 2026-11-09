@@ -115,6 +115,28 @@ const TEXTS: &[(&str, [&str; 6])] = &[
             "Parar a gravação",
         ],
     ),
+    (
+        "check-updates",
+        [
+            "Verifica aggiornamenti...",
+            "Check for updates...",
+            "Buscar actualizaciones...",
+            "Rechercher des mises à jour...",
+            "Nach Updates suchen...",
+            "Verificar atualizações...",
+        ],
+    ),
+    (
+        "update-tooltip",
+        [
+            "aggiornamento {version} disponibile",
+            "update {version} available",
+            "actualización {version} disponible",
+            "mise à jour {version} disponible",
+            "Update {version} verfügbar",
+            "atualização {version} disponível",
+        ],
+    ),
     ("pick-color", ["Contagocce", "Color picker", "Cuentagotas", "Pipette", "Farbpipette", "Conta-gotas"]),
     (
         "open-gallery",

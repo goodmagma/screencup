@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Download, ExternalLink, FileText, RefreshCw } from "lucide-react";
 import { t } from "./i18n";
 
@@ -32,6 +33,20 @@ export function AboutWindow({ notify }: { notify: (message: string) => void }) {
         notify(t("update.unreachable"));
       });
   };
+  // "Check for updates" in the tray menu opens this window and starts the check: a flag set
+  // before the page loads when the window is new, an event when it is already open.
+  useEffect(() => {
+    const w = window as { __SCREENCUP_ABOUT_CHECK__?: boolean };
+    if (w.__SCREENCUP_ABOUT_CHECK__) {
+      w.__SCREENCUP_ABOUT_CHECK__ = false;
+      check();
+    }
+    const off = listen("about-check-updates", () => check());
+    return () => {
+      off.then((f) => f());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const install = () => {
     notify(t("update.downloading"));
     invoke("install_update").catch((e) => notify(t("update.failed", { error: String(e) })));
