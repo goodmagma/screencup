@@ -10,6 +10,15 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/goodmagma/screencup/releases/latest"><img src="https://img.shields.io/github/v/release/goodmagma/screencup?label=release" alt="Latest release"></a>
+  <a href="https://github.com/goodmagma/screencup/actions/workflows/release.yml"><img src="https://github.com/goodmagma/screencup/actions/workflows/release.yml/badge.svg" alt="Release build"></a>
+  <a href="https://github.com/goodmagma/screencup/releases"><img src="https://img.shields.io/github/downloads/goodmagma/screencup/total" alt="Downloads"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platforms">
+  <a href="https://v2.tauri.app"><img src="https://img.shields.io/badge/built%20with-Tauri%202-24C8DB?logo=tauri&logoColor=white" alt="Built with Tauri 2"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/goodmagma/screencup" alt="License: MIT"></a>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/main-window.png" width="49%" alt="Gallery">
   <img src="docs/screenshots/image-editor.png" width="49%" alt="Editor">
 </p>
