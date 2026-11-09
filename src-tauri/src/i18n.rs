@@ -115,6 +115,7 @@ const TEXTS: &[(&str, [&str; 6])] = &[
             "Parar a gravação",
         ],
     ),
+    ("pick-color", ["Contagocce", "Color picker", "Cuentagotas", "Pipette", "Farbpipette", "Conta-gotas"]),
     (
         "open-gallery",
         [

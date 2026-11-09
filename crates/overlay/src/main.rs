@@ -8,11 +8,19 @@
 //! Hovering highlights the window under the cursor (see `snap`); the mouse wheel steps into
 //! its controls and back out. A click without dragging selects exactly that element.
 //!
+//! Next to the cursor a magnifier shows the pixels around it, with the cursor position (or
+//! the selection size while dragging) and the colour under the cursor. The arrow keys move
+//! the cursor by one pixel, ten with Shift. C picks the colour under the cursor instead of a
+//! region (not in `--select` mode).
+//!
 //! Usage:
 //!   screencup-overlay [--out FILE.png]   select a region, save it, print a JSON result on stdout
 //!   screencup-overlay --select           select a region, print it as JSON without saving pixels
 //!                                        (used to pick the area of a video recording)
+//!   screencup-overlay --pick             colour picker: a click prints {"color": "#RRGGBB"}
 //!   screencup-overlay --dump DIR         capture only (no UI), save one PNG per monitor
+//!
+//! A colour picked with C in the other modes is printed the same way, and nothing is saved.
 //!
 //! Exit codes: 0 = saved, 1 = cancelled, 2 = error.
 
@@ -24,7 +32,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
-use winit::dpi::PhysicalSize;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey};
@@ -32,6 +40,7 @@ use winit::monitor::MonitorHandle;
 use winit::window::{CursorIcon, Window, WindowId, WindowLevel};
 use xcap::image::{RgbaImage, imageops};
 
+mod font;
 mod snap;
 
 const ACCENT: u32 = 0x2D8CFF;
@@ -45,6 +54,9 @@ const WHITE: u32 = 0xFFFFFF;
 const MAG_SRC: i32 = 17;
 const MAG_ZOOM: i32 = 7;
 const MAG_GAP: i32 = 20;
+/// Readout under the magnifier: padding and background.
+const PANEL_PAD: i32 = 6;
+const PANEL_BG: u32 = 0x1E1E1E;
 
 /// One monitor's frozen capture, positioned in virtual-desktop coordinates.
 struct Shot {
@@ -119,6 +131,16 @@ impl Canvas<'_> {
 
 /// Converts the capture to 0RGB at the window size, plus a dimmed copy for the backdrop.
 /// The sizes normally match; nearest sampling only covers DPI/size mismatches.
+/// The colour of an image pixel as 0RGB.
+fn pixel(shot: &Shot, (x, y): (u32, u32)) -> u32 {
+    let p = shot.img.get_pixel(x, y).0;
+    (p[0] as u32) << 16 | (p[1] as u32) << 8 | p[2] as u32
+}
+
+fn hex(c: u32) -> String {
+    format!("#{c:06X}")
+}
+
 fn prepare(img: &RgbaImage, w: u32, h: u32) -> (Vec<u32>, Vec<u32>) {
     let (iw, ih) = img.dimensions();
     let raw = img.as_raw();
@@ -145,6 +167,8 @@ struct Overlay {
     cursor: Option<(i32, i32)>,
     /// Window or control under the cursor, in window pixels.
     hover: Option<Rect>,
+    /// Colour picker: the screen is not dimmed and nothing is highlighted.
+    pick: bool,
 }
 
 impl Overlay {
@@ -153,6 +177,23 @@ impl Overlay {
         let (iw, ih) = shot.img.dimensions();
         let (w, h) = (self.size.0.max(1) as i64, self.size.1.max(1) as i64);
         (shot.x + (x as i64 * iw as i64 / w) as i32, shot.y + (y as i64 * ih as i64 / h) as i32)
+    }
+
+    /// Window pixel -> pixel of the monitor capture, clamped to the image.
+    fn to_image(&self, shot: &Shot, p: (i32, i32)) -> (u32, u32) {
+        let (x, y) = self.to_desktop(shot, p);
+        let (iw, ih) = shot.img.dimensions();
+        ((x - shot.x).clamp(0, iw as i32 - 1) as u32, (y - shot.y).clamp(0, ih as i32 - 1) as u32)
+    }
+
+    /// Window rectangle -> (x, y, width, height) in pixels of the monitor capture.
+    fn rect_to_image(&self, shot: &Shot, r: Rect) -> (u32, u32, u32, u32) {
+        let (w, h) = (self.size.0.max(1) as u64, self.size.1.max(1) as u64);
+        let (iw, ih) = shot.img.dimensions();
+        let sx = |x: i32| (x.max(0) as u64 * iw as u64 / w) as u32;
+        let sy = |y: i32| (y.max(0) as u64 * ih as u64 / h) as u32;
+        let (x0, y0) = (sx(r.x0), sy(r.y0));
+        (x0, y0, sx(r.x1) - x0, sy(r.y1) - y0)
     }
 
     /// Desktop bounds -> window rectangle, clipped to this monitor.
@@ -176,8 +217,23 @@ impl Overlay {
             self.surface.resize(nw, nh).expect("resize surface");
             self.size = (width, height);
         }
+        // Readout under the magnifier: colour, then position (or selection size) and hex text.
+        let readout = self.cursor.map(|p| {
+            let colour = pixel(shot, self.to_image(shot, p));
+            let first = match selection {
+                Some(r) => {
+                    let (_, _, sw, sh) = self.rect_to_image(shot, r);
+                    format!("{sw}×{sh}")
+                }
+                None => {
+                    let (dx, dy) = self.to_desktop(shot, p);
+                    format!("{dx}, {dy}")
+                }
+            };
+            (colour, first, hex(colour))
+        });
         let mut buf = self.surface.buffer_mut().expect("surface buffer");
-        buf.copy_from_slice(&self.dim);
+        buf.copy_from_slice(if self.pick { &self.bright } else { &self.dim });
         let (w, h) = (width as i32, height as i32);
         let mut cv = Canvas { buf: &mut buf, w, h };
 
@@ -210,10 +266,18 @@ impl Overlay {
             (None, _, None) => {}
         }
 
-        if let Some((cx, cy)) = self.cursor {
+        if let (Some((cx, cy)), Some((colour, first, second))) = (self.cursor, readout) {
             let side = MAG_SRC * MAG_ZOOM;
-            let mx = if cx + MAG_GAP + side + 2 > w { cx - MAG_GAP - side } else { cx + MAG_GAP };
-            let my = if cy + MAG_GAP + side + 2 > h { cy - MAG_GAP - side } else { cy + MAG_GAP };
+            let swatch = font::HEIGHT;
+            let bw = side
+                .max(font::width(&first) + 2 * PANEL_PAD)
+                .max(swatch + PANEL_PAD + font::width(&second) + 2 * PANEL_PAD);
+            let bh = side + 2 * font::HEIGHT + 3 * PANEL_PAD;
+            let bx = if cx + MAG_GAP + bw + 2 > w { cx - MAG_GAP - bw } else { cx + MAG_GAP };
+            let by = if cy + MAG_GAP + bh + 2 > h { cy - MAG_GAP - bh } else { cy + MAG_GAP };
+            cv.fill(bx, by, bx + bw, by + bh, PANEL_BG);
+
+            let (mx, my) = (bx + (bw - side) / 2, by);
             for j in 0..MAG_SRC {
                 for i in 0..MAG_SRC {
                     let (sx, sy) = (cx - MAG_SRC / 2 + i, cy - MAG_SRC / 2 + j);
@@ -222,14 +286,21 @@ impl Overlay {
                     } else {
                         0
                     };
-                    let (bx, by) = (mx + i * MAG_ZOOM, my + j * MAG_ZOOM);
-                    cv.fill(bx, by, bx + MAG_ZOOM, by + MAG_ZOOM, c);
+                    let (px, py) = (mx + i * MAG_ZOOM, my + j * MAG_ZOOM);
+                    cv.fill(px, py, px + MAG_ZOOM, py + MAG_ZOOM, c);
                 }
             }
             let centre = mx + (MAG_SRC / 2) * MAG_ZOOM;
             let middle = my + (MAG_SRC / 2) * MAG_ZOOM;
             cv.outline(Rect { x0: centre, y0: middle, x1: centre + MAG_ZOOM, y1: middle + MAG_ZOOM }, ACCENT);
-            cv.outline(Rect { x0: mx, y0: my, x1: mx + side, y1: my + side }, WHITE);
+
+            let (tx, ty) = (bx + PANEL_PAD, by + side + PANEL_PAD);
+            font::draw(&first, tx, ty, |x0, y0, x1, y1| cv.fill(x0, y0, x1, y1, WHITE));
+            let ly = ty + font::HEIGHT + PANEL_PAD;
+            cv.fill(tx, ly, tx + swatch, ly + swatch, colour);
+            cv.outline(Rect { x0: tx, y0: ly, x1: tx + swatch, y1: ly + swatch }, WHITE);
+            font::draw(&second, tx + swatch + PANEL_PAD, ly, |x0, y0, x1, y1| cv.fill(x0, y0, x1, y1, WHITE));
+            cv.outline(Rect { x0: bx, y0: by, x1: bx + bw, y1: by + bh }, WHITE);
         }
 
         buf.present().expect("present");
@@ -250,8 +321,11 @@ struct App {
     snap_depth: usize,
     /// Window the depth applies to; moving onto another window resets the depth.
     snap_window: Option<snap::Bounds>,
-    /// Where to save the crop; `None` in `--select` mode.
+    /// Where to save the crop; `None` in `--select` and `--pick` mode.
     out: Option<PathBuf>,
+    /// `--pick`: a click picks the colour under the cursor.
+    pick: bool,
+    shift: bool,
     overlays: Vec<Overlay>,
     drag: Option<Drag>,
     /// `None` when the user cancelled.
@@ -283,30 +357,63 @@ impl App {
         self.selection_for(id).filter(Rect::is_drag)
     }
 
+    /// Handles a new cursor position on overlay `idx`.
+    fn cursor_moved(&mut self, idx: usize, p: (i32, i32)) {
+        let o = &mut self.overlays[idx];
+        let id = o.window.id();
+        let (w, h) = (o.size.0 as i32, o.size.1 as i32);
+        o.cursor = Some(p);
+        if let Some(d) = self.drag.as_mut().filter(|d| d.window == id) {
+            d.end = (p.0.clamp(0, w), p.1.clamp(0, h));
+        } else if !self.pick {
+            self.update_hover(idx);
+        }
+        self.overlays[idx].window.request_redraw();
+    }
+
+    /// Arrow keys: moves the mouse cursor by (`dx`, `dy`) window pixels.
+    fn nudge(&mut self, idx: usize, dx: i32, dy: i32) {
+        let o = &self.overlays[idx];
+        let Some((x, y)) = o.cursor else { return };
+        let p = ((x + dx).clamp(0, o.size.0 as i32 - 1), (y + dy).clamp(0, o.size.1 as i32 - 1));
+        // Not supported everywhere (Wayland); the overlay's own cursor still moves.
+        let _ = o.window.set_cursor_position(PhysicalPosition::new(p.0, p.1));
+        self.cursor_moved(idx, p);
+    }
+
+    /// Ends with the colour under the cursor of overlay `idx`.
+    fn finish_color(&mut self, event_loop: &ActiveEventLoop, idx: usize) {
+        let o = &self.overlays[idx];
+        let Some(p) = o.cursor else { return };
+        let shot = &self.shots[o.shot];
+        let colour = hex(pixel(shot, o.to_image(shot, p)));
+        for o in &self.overlays {
+            o.window.set_visible(false);
+        }
+        self.result = Some(Ok(serde_json::json!({ "color": colour }).to_string()));
+        event_loop.exit();
+    }
+
     fn finish(&mut self, event_loop: &ActiveEventLoop, idx: usize, r: Rect) {
         for o in &self.overlays {
             o.window.set_visible(false);
         }
         let shot = &self.shots[self.overlays[idx].shot];
-        let (w, h) = self.overlays[idx].size;
-        let (iw, ih) = shot.img.dimensions();
-        let sx = |x: i32| (x as u64 * iw as u64 / w as u64) as u32;
-        let sy = |y: i32| (y as u64 * ih as u64 / h as u64) as u32;
-        let (ix0, iy0, ix1, iy1) = (sx(r.x0), sy(r.y0), sx(r.x1), sy(r.y1));
+        let (ix0, iy0, iw, ih) = self.overlays[idx].rect_to_image(shot, r);
         let result = serde_json::json!({
             "path": self.out,
             "monitor": self.overlays[idx].shot,
             "rect": {
                 "x": shot.x + ix0 as i32,
                 "y": shot.y + iy0 as i32,
-                "width": ix1 - ix0,
-                "height": iy1 - iy0,
+                "width": iw,
+                "height": ih,
             },
             "elapsed_ms": self.t0.elapsed().as_millis() as u64,
         })
         .to_string();
         let saved = match &self.out {
-            Some(out) => save(&imageops::crop_imm(&shot.img, ix0, iy0, ix1 - ix0, iy1 - iy0).to_image(), out),
+            Some(out) => save(&imageops::crop_imm(&shot.img, ix0, iy0, iw, ih).to_image(), out),
             None => Ok(()),
         };
         self.result = Some(saved.map(|()| result));
@@ -373,6 +480,7 @@ impl ApplicationHandler for App {
                 dim: Vec::new(),
                 cursor: None,
                 hover: None,
+                pick: self.pick,
             };
             // Windows never sends a paint to a hidden window, so show first and paint right
             // away. The window class has no background brush, so until the paint lands the
@@ -395,19 +503,10 @@ impl ApplicationHandler for App {
                 o.draw(&self.shots[o.shot], selection);
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let o = &mut self.overlays[idx];
-                let (w, h) = (o.size.0 as i32, o.size.1 as i32);
-                let p = (position.x as i32, position.y as i32);
-                o.cursor = Some(p);
-                if let Some(d) = self.drag.as_mut().filter(|d| d.window == id) {
-                    d.end = (p.0.clamp(0, w), p.1.clamp(0, h));
-                } else {
-                    self.update_hover(idx);
-                }
-                self.overlays[idx].window.request_redraw();
+                self.cursor_moved(idx, (position.x as i32, position.y as i32));
             }
             // Wheel down steps into the controls under the cursor, wheel up back out.
-            WindowEvent::MouseWheel { delta, .. } if self.drag.is_none() => {
+            WindowEvent::MouseWheel { delta, .. } if self.drag.is_none() && !self.pick => {
                 let dy = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32,
@@ -427,6 +526,7 @@ impl ApplicationHandler for App {
                 o.window.request_redraw();
             }
             WindowEvent::MouseInput { state, button, .. } => match (button, state) {
+                (MouseButton::Left, ElementState::Pressed) if self.pick => self.finish_color(event_loop, idx),
                 (MouseButton::Left, ElementState::Pressed) => {
                     if let Some(p) = self.overlays[idx].cursor {
                         self.drag = Some(Drag { window: id, start: p, end: p });
@@ -454,11 +554,23 @@ impl ApplicationHandler for App {
                 }
                 _ => {}
             },
-            WindowEvent::KeyboardInput { event, .. }
-                if event.state == ElementState::Pressed
-                    && event.logical_key == Key::Named(NamedKey::Escape) =>
-            {
-                event_loop.exit()
+            WindowEvent::ModifiersChanged(m) => self.shift = m.state().shift_key(),
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                // Keys go to the focused overlay, which may be on another monitor than the
+                // cursor; act on the overlay under the cursor.
+                let idx = self.overlays.iter().position(|o| o.cursor.is_some()).unwrap_or(idx);
+                let step = if self.shift { 10 } else { 1 };
+                match &event.logical_key {
+                    Key::Named(NamedKey::Escape) => event_loop.exit(),
+                    Key::Named(NamedKey::ArrowLeft) => self.nudge(idx, -step, 0),
+                    Key::Named(NamedKey::ArrowRight) => self.nudge(idx, step, 0),
+                    Key::Named(NamedKey::ArrowUp) => self.nudge(idx, 0, -step),
+                    Key::Named(NamedKey::ArrowDown) => self.nudge(idx, 0, step),
+                    Key::Character(c) if c.eq_ignore_ascii_case("c") && (self.out.is_some() || self.pick) => {
+                        self.finish_color(event_loop, idx)
+                    }
+                    _ => {}
+                }
             }
             _ => {}
         }
@@ -475,12 +587,14 @@ fn main() -> ExitCode {
     let mut out = None;
     let mut dump = None;
     let mut select = false;
+    let mut pick = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--out" => out = args.next().map(PathBuf::from),
             "--dump" => dump = args.next().map(PathBuf::from),
             "--select" => select = true,
+            "--pick" => pick = true,
             other => {
                 eprintln!("unknown argument: {other}");
                 return ExitCode::from(2);
@@ -532,7 +646,9 @@ fn main() -> ExitCode {
         snaps,
         snap_depth: 0,
         snap_window: None,
-        out: if select { None } else { Some(out.unwrap_or_else(default_out)) },
+        out: if select || pick { None } else { Some(out.unwrap_or_else(default_out)) },
+        pick,
+        shift: false,
         overlays: Vec::new(),
         drag: None,
         result: None,

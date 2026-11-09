@@ -24,7 +24,7 @@ type Service = "litterbox" | "catbox";
 const HOSTS: Record<Service, string> = { litterbox: "litterbox.catbox.moe", catbox: "catbox.moe" };
 
 /** Mirrors `CaptureKind` in src-tauri/src/capture.rs. */
-type CaptureKind = "region" | "screen" | "all";
+type CaptureKind = "region" | "screen" | "all" | "color";
 
 /** Mirrors `RecordKind` in src-tauri/src/recorder.rs. */
 type RecordKind = "region" | "screen";
@@ -242,11 +242,13 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
     const updated = listen("capture-updated", refresh);
     const failed = listen<string>("recording-error", (event) => notify(t("gallery.recordingFailed", { error: event.payload }), true));
     const warned = listen<string>("recording-warning", (event) => notify(t("gallery.audioWarning", { warning: event.payload }), true));
+    const picked = listen<string>("color-picked", (event) => notify(t("color.copied", { color: event.payload })));
     return () => {
       added.then((off) => off());
       updated.then((off) => off());
       failed.then((off) => off());
       warned.then((off) => off());
+      picked.then((off) => off());
     };
   }, [refresh, notify]);
 
@@ -469,6 +471,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
             { label: t("gallery.captureRegion") + hotkeyHint(settings?.hotkeys.capture_region), onSelect: () => capture("region") },
             { label: t("gallery.captureScreen") + hotkeyHint(settings?.hotkeys.capture_screen), onSelect: () => capture("screen") },
             { label: t("gallery.captureAll") + hotkeyHint(settings?.hotkeys.capture_all), onSelect: () => capture("all") },
+            { label: t("gallery.pickColor"), onSelect: () => capture("color") },
             { label: `${t("paste.menu")} (Ctrl+V)`, onSelect: paste },
           ]}
         />

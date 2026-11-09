@@ -1,6 +1,9 @@
 //! Capture flows. Region capture runs the native `screencup-overlay` binary; screen captures
 //! are taken in-process. Every successful capture is saved to the library, copied to the
 //! clipboard and announced to the gallery with a `capture-added` event.
+//!
+//! The colour picker runs the same overlay; a colour picked there (or with C during a region
+//! capture) goes to the clipboard as `#RRGGBB` and is announced with `color-picked`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -22,6 +25,15 @@ pub enum CaptureKind {
     Screen,
     /// Every monitor, stitched over the virtual desktop.
     All,
+    /// The colour of a pixel on the frozen screen, copied as text.
+    Color,
+}
+
+/// What a capture produced.
+enum Outcome {
+    Saved(PathBuf),
+    /// `#RRGGBB`
+    Color(String),
 }
 
 /// Set while a capture runs, so repeated hotkeys do not stack overlays.
@@ -39,7 +51,18 @@ pub fn capture(app: AppHandle, kind: CaptureKind) {
         // The gallery must not end up in its own screenshot.
         let gallery_was_visible = hide_gallery(&app);
         match run(&app, kind) {
-            Ok(Some(path)) => {
+            Ok(Some(Outcome::Color(color))) => {
+                match clipboard::copy_text(&app, &color) {
+                    Ok(()) => {
+                        let _ = app.emit("color-picked", &color);
+                    }
+                    Err(e) => eprintln!("copy to clipboard failed: {e}"),
+                }
+                if gallery_was_visible {
+                    show_gallery(&app);
+                }
+            }
+            Ok(Some(Outcome::Saved(path))) => {
                 let prefs = settings::load(&app);
                 if prefs.copy_after_capture
                     && let Err(e) = clipboard_copy(&app, &path)
@@ -65,16 +88,33 @@ pub fn capture(app: AppHandle, kind: CaptureKind) {
     });
 }
 
-/// Returns the saved file, or `None` when the user cancelled.
-fn run(app: &AppHandle, kind: CaptureKind) -> Result<Option<PathBuf>, String> {
+/// Returns what the capture produced, or `None` when the user cancelled.
+fn run(app: &AppHandle, kind: CaptureKind) -> Result<Option<Outcome>, String> {
+    if let CaptureKind::Color = kind {
+        return overlay(&["--pick".as_ref()])?.map(|json| picked_color(&json)).transpose();
+    }
     let out = library::new_capture_path(app)?;
     let img = match kind {
-        CaptureKind::Region => return Ok(run_overlay(&out)?.then_some(out)),
+        CaptureKind::Region => {
+            let Some(json) = overlay(&["--out".as_ref(), out.as_os_str()])? else { return Ok(None) };
+            // C in the overlay picks a colour instead of a region.
+            return Ok(Some(picked_color(&json).unwrap_or(Outcome::Saved(out))));
+        }
         CaptureKind::Screen => capture_screen_under_cursor(app)?,
         CaptureKind::All => capture_all_screens()?,
+        CaptureKind::Color => unreachable!("handled above"),
     };
     library::save_png(&img, &out)?;
-    Ok(Some(out))
+    Ok(Some(Outcome::Saved(out)))
+}
+
+/// The colour in an overlay result such as `{"color": "#2D8CFF"}`.
+fn picked_color(json: &str) -> Result<Outcome, String> {
+    #[derive(Deserialize)]
+    struct Picked {
+        color: String,
+    }
+    serde_json::from_str::<Picked>(json).map(|p| Outcome::Color(p.color)).map_err(|e| format!("{e}: {json}"))
 }
 
 pub(crate) fn hide_gallery(app: &AppHandle) -> bool {
@@ -147,11 +187,6 @@ fn overlay(args: &[&std::ffi::OsStr]) -> Result<Option<String>, String> {
         Some(1) => Ok(None),
         _ => Err(String::from_utf8_lossy(&output.stderr).into_owned()),
     }
-}
-
-/// Returns `false` when the user cancelled the selection.
-fn run_overlay(out: &Path) -> Result<bool, String> {
-    Ok(overlay(&["--out".as_ref(), out.as_os_str()])?.is_some())
 }
 
 /// Area in physical virtual-desktop pixels.
