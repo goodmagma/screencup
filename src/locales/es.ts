@@ -247,4 +247,6 @@ export const es: Record<Key, string> = {
   "sc.square": "Formas regulares, líneas cada 15°, mantener proporciones",
   "sc.zoom": "Zoom",
   "sc.playPause": "Reproducir / pausa",
+  "gallery.print": "Imprimir…",
+  "gallery.printMany": "Imprimir {count} imágenes…",
 };

@@ -56,6 +56,8 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
   const [context, setContext] = useState<{ x: number; y: number; name: string } | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  /** Object URLs of the images in the print area (see `print`). */
+  const [printing, setPrinting] = useState<string[]>([]);
   const closeShortcuts = useCallback(() => setShowShortcuts(false), []);
   /** Files dragged over the window; see `import_captures` in src-tauri/src/library.rs. */
   const [dropping, setDropping] = useState(false);
@@ -359,6 +361,38 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  /**
+   * Prints the library files (with their annotations), one image per page: they are put in
+   * an area only print media shows, then the system print dialog opens. The URLs are revoked
+   * at the next print, since not every webview reports when its dialog closes.
+   */
+  const print = async (names: string[]) => {
+    try {
+      const urls = await Promise.all(
+        names
+          .filter((n) => !isVideo(n))
+          .map(async (name) => {
+            const bytes = await invoke<ArrayBuffer | number[]>("read_capture", { name });
+            return URL.createObjectURL(new Blob([Array.isArray(bytes) ? new Uint8Array(bytes) : bytes]));
+          }),
+      );
+      setPrinting((old) => {
+        old.forEach((u) => URL.revokeObjectURL(u));
+        return urls;
+      });
+    } catch (e) {
+      notify(String(e), true);
+    }
+  };
+
+  useEffect(() => {
+    if (printing.length === 0) return;
+    const images = [...document.querySelectorAll<HTMLImageElement>(".print-area img")];
+    Promise.all(images.map((i) => i.decode().catch(() => {})))
+      .then(() => invoke("print_webview"))
+      .catch((e) => notify(String(e), true));
+  }, [printing, notify]);
+
   const itemActions = (name: string): MenuItem[] => {
     const video = isVideo(name);
     return [
@@ -369,6 +403,7 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       { label: t("gallery.openDefault"), onSelect: () => open(name) },
       ...(IS_WINDOWS ? [{ label: t("gallery.openWith"), onSelect: () => openWith(name) }] : []),
       { label: t("gallery.saveAs"), onSelect: () => saveAs(name), disabled: video },
+      { label: t("gallery.print"), onSelect: () => print([name]), disabled: video },
       { label: t("gallery.reveal"), onSelect: () => reveal(name) },
       ...shareActions([name]),
       { label: t("common.delete"), onSelect: () => remove([name]), danger: true },
@@ -377,6 +412,11 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
 
   /** Context menu for a multiple selection: only what applies to all of them. */
   const multiActions = (names: string[]): MenuItem[] => [
+    {
+      label: t("gallery.printMany", { count: names.filter((n) => !isVideo(n)).length }),
+      onSelect: () => print(names),
+      disabled: names.every(isVideo),
+    },
     ...shareActions(names),
     { label: t("gallery.deleteMany", { count: names.length }), onSelect: () => remove(names), danger: true },
   ];
@@ -544,6 +584,12 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       </footer>
 
       {showShortcuts && <Shortcuts hotkeys={settings?.hotkeys} onClose={closeShortcuts} />}
+
+      <div className="print-area">
+        {printing.map((url) => (
+          <img key={url} src={url} alt="" />
+        ))}
+      </div>
 
       {askShare && (
         <div className="modal-backdrop" style={{ position: "fixed" }}>

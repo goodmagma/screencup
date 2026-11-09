@@ -247,4 +247,6 @@ export const fr: Record<Key, string> = {
   "sc.square": "Formes régulières, lignes par pas de 15°, proportions conservées",
   "sc.zoom": "Zoom",
   "sc.playPause": "Lecture / pause",
+  "gallery.print": "Imprimer…",
+  "gallery.printMany": "Imprimer {count} images…",
 };

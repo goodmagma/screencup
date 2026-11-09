@@ -183,6 +183,8 @@ pub fn run() {
             settings::open_library_dir,
             library::open_capture,
             library::reveal_capture,
+            library::read_capture,
+            library::print_webview,
             clipboard::copy_capture,
             library::list_captures,
             library::delete_captures,

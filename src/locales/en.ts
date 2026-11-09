@@ -247,5 +247,7 @@ export const en: Record<Key, string> = {
   "sc.square": "Regular shapes, lines in 15° steps, keep proportions",
   "sc.zoom": "Zoom",
   "sc.playPause": "Play / pause",
+  "gallery.print": "Print…",
+  "gallery.printMany": "Print {count} images…",
 };
 

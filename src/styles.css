@@ -1503,3 +1503,46 @@ html.clickfx body {
   font-size: 18px;
   pointer-events: none;
 }
+
+/* --- printing (Gallery: print) ----------------------------------------------------------- */
+
+.print-area {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 10mm;
+  }
+
+  html,
+  body,
+  #root,
+  .gallery {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .gallery > :not(.print-area) {
+    display: none !important;
+  }
+
+  .print-area {
+    display: block;
+  }
+
+  .print-area img {
+    display: block;
+    max-width: 100%;
+    max-height: 95vh;
+    margin: 0 auto;
+    object-fit: contain;
+    break-after: page;
+  }
+
+  .print-area img:last-child {
+    break-after: auto;
+  }
+}

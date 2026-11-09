@@ -90,6 +90,20 @@ pub fn resolve<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<PathBuf, St
     Ok(dir(app)?.join(name))
 }
 
+/// The bytes of a library file, for printing in the gallery.
+#[tauri::command]
+pub fn read_capture(app: AppHandle, name: String) -> Result<tauri::ipc::Response, String> {
+    let path = resolve(&app, &name)?;
+    std::fs::read(&path).map(tauri::ipc::Response::new).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Opens the system print dialog for the calling webview. Native, because `window.print()`
+/// does nothing in the macOS webview.
+#[tauri::command]
+pub fn print_webview(webview: tauri::Webview) -> Result<(), String> {
+    webview.print().map_err(|e| e.to_string())
+}
+
 fn modified(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }

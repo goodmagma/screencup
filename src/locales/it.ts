@@ -252,6 +252,8 @@ export const it = {
   "sc.square": "Forme regolari, linee a 15°, proporzioni mantenute",
   "sc.zoom": "Zoom",
   "sc.playPause": "Riproduci / pausa",
+  "gallery.print": "Stampa…",
+  "gallery.printMany": "Stampa {count} immagini…",
 };
 
 export type Key = keyof typeof it;
