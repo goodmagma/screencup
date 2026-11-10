@@ -253,4 +253,6 @@ export const es: Record<Key, string> = {
   "editor.pasteImageHint": "Pega una imagen del portapapeles sobre la captura",
   "editor.pasteEmpty": "El portapapeles no contiene ninguna imagen",
   "sc.pasteImage": "Pegar una imagen del portapapeles",
+  "sc.selectAllShapes": "Seleccionar todas las formas",
+  "sc.multiSelectShapes": "Añadir o quitar una forma de la selección",
 };

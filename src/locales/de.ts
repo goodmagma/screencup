@@ -253,4 +253,6 @@ export const de: Record<Key, string> = {
   "editor.pasteImageHint": "Ein Bild aus der Zwischenablage auf die Aufnahme einfügen",
   "editor.pasteEmpty": "Die Zwischenablage enthält kein Bild",
   "sc.pasteImage": "Bild aus der Zwischenablage einfügen",
+  "sc.selectAllShapes": "Alle Formen auswählen",
+  "sc.multiSelectShapes": "Form zur Auswahl hinzufügen oder entfernen",
 };

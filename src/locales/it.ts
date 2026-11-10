@@ -258,6 +258,8 @@ export const it = {
   "editor.pasteImageHint": "Incolla un'immagine dagli appunti sopra la cattura",
   "editor.pasteEmpty": "Negli appunti non c'è un'immagine",
   "sc.pasteImage": "Incolla un'immagine dagli appunti",
+  "sc.selectAllShapes": "Seleziona tutte le forme",
+  "sc.multiSelectShapes": "Aggiungi o togli una forma dalla selezione",
 };
 
 export type Key = keyof typeof it;

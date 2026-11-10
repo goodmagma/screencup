@@ -56,6 +56,8 @@ function sections(hotkeys: Hotkeys | undefined): { title: string; hint?: string;
         [acc("Control+KeyS"), t("sc.save")],
         [acc("Control+KeyC"), t("sc.copyImage")],
         [acc("Control+KeyV"), t("sc.pasteImage")],
+        [acc("Control+KeyA"), t("sc.selectAllShapes")],
+        [withMod("Control", "key.Click"), t("sc.multiSelectShapes")],
         [k("key.Delete"), t("sc.removeShape")],
         [acc("Escape"), t("sc.deselect")],
         [k("key.Enter"), t("sc.finishPolygon")],

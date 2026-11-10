@@ -150,6 +150,13 @@ export const isBox = (s: Shape): s is BoxShape =>
 /** Box shapes positioned by their centre in Konva (ellipses). */
 export const isCentred = (s: Shape): s is BoxShape => s.kind === "ellipse" || s.kind === "magnify";
 
+/** `s` moved by (dx, dy). */
+export function translate(s: Shape, dx: number, dy: number): Shape {
+  if ("points" in s) return { ...s, points: s.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)) } as Shape;
+  if (s.kind === "callout") return { ...s, x: s.x + dx, y: s.y + dy, tx: s.tx + dx, ty: s.ty + dy };
+  return { ...s, x: s.x + dx, y: s.y + dy };
+}
+
 /** Boxes drawn right-to-left or bottom-to-top get positive width/height. */
 export function normalizeBox<T extends { x: number; y: number; w: number; h: number }>(s: T): T {
   return {

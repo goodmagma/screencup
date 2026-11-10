@@ -253,5 +253,7 @@ export const en: Record<Key, string> = {
   "editor.pasteImageHint": "Paste a picture from the clipboard onto the capture",
   "editor.pasteEmpty": "The clipboard holds no image",
   "sc.pasteImage": "Paste a picture from the clipboard",
+  "sc.selectAllShapes": "Select all shapes",
+  "sc.multiSelectShapes": "Add a shape to the selection or remove it",
 };
 

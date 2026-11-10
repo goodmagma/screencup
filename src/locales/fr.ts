@@ -253,4 +253,6 @@ export const fr: Record<Key, string> = {
   "editor.pasteImageHint": "Colle une image du presse-papiers sur la capture",
   "editor.pasteEmpty": "Le presse-papiers ne contient pas d'image",
   "sc.pasteImage": "Coller une image du presse-papiers",
+  "sc.selectAllShapes": "Sélectionner toutes les formes",
+  "sc.multiSelectShapes": "Ajouter ou retirer une forme de la sélection",
 };

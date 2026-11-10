@@ -77,6 +77,7 @@ import {
   sizeScale,
   snapAngle,
   squareOff,
+  translate,
   stepRadius,
 } from "./model";
 
@@ -112,6 +113,60 @@ function PastedImage({ src, ...props }: { src: string } & Omit<ComponentProps<ty
     if (!pastedImages.has(src)) loadPasted(src).then(setEl, () => {});
   }, [src]);
   return el ? <KImage image={el} {...props} /> : null;
+}
+
+const ALL_ANCHORS = [
+  "top-left",
+  "top-center",
+  "top-right",
+  "middle-right",
+  "bottom-right",
+  "bottom-center",
+  "bottom-left",
+  "middle-left",
+];
+
+/** Selection frame and handles for a shape. Shapes drawn from points only get the frame. */
+function frameProps(s: Shape | undefined): ComponentProps<typeof Transformer> {
+  const points = !!s && "points" in s;
+  return {
+    rotateEnabled: !points && s?.kind !== "blur" && s?.kind !== "magnify" && s?.kind !== "callout" && s?.kind !== "step",
+    enabledAnchors: points || s?.kind === "text" || s?.kind === "step" ? [] : ALL_ANCHORS,
+    keepRatio: s?.kind === "image",
+    ignoreStroke: true,
+    flipEnabled: false,
+    anchorSize: HANDLE,
+    anchorCornerRadius: 0,
+    anchorStroke: "#1c1f24",
+    anchorFill: "#ffffff",
+    borderStroke: ACCENT,
+    borderDash: [4, 4],
+    rotateAnchorOffset: 24,
+    rotationSnaps: [0, 45, 90, 135, 180, 225, 270, 315],
+  };
+}
+
+/** The frame of one shape of a multiple selection, attached to its node. */
+function ShapeFrame({
+  nodeId,
+  stage,
+  deps,
+  box,
+  ...props
+}: {
+  nodeId: string;
+  stage: Konva.Stage | null;
+  /** Re-attaches when this changes: the node is replaced when its shape changes kind. */
+  deps: unknown;
+  box: (tr: Konva.Transformer | null, oldBox: TransformBox, newBox: TransformBox) => TransformBox;
+} & ComponentProps<typeof Transformer>) {
+  const ref = useRef<Konva.Transformer>(null);
+  useEffect(() => {
+    const node = stage?.findOne((n: KonvaNode) => n.id() === nodeId);
+    ref.current?.nodes(node ? [node] : []);
+    ref.current?.getLayer()?.batchDraw();
+  }, [nodeId, stage, deps]);
+  return <Transformer ref={ref} {...props} boundBoxFunc={(o, n) => box(ref.current, o, n)} />;
 }
 
 const VIEW_PADDING = 32;
@@ -266,7 +321,9 @@ export function Editor({ name, onClose, notify }: Props) {
   const [tool, setTool] = useState<Tool>("arrow");
   const [color, setColor] = useState(COLORS[0]);
   const [sizeIdx, setSizeIdx] = useState(1);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Selected shapes: one, or several picked with Ctrl+click or Ctrl+A to move together. */
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const setSelectedId = (id: string | null) => setSelectedIds(id ? [id] : []);
   const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
   const [fit, setFit] = useState(true);
   const [manualZoom, setManualZoom] = useState(1);
@@ -569,10 +626,15 @@ export function Editor({ name, onClose, notify }: Props) {
    * Konva's default of keeping the current proportions. The corner or edge opposite the dragged
    * handle stays put. Rotated boxes and the rotation handle keep Konva's behaviour.
    */
-  const squareBox = (_oldBox: TransformBox, newBox: TransformBox): TransformBox => {
-    const anchor = trRef.current?.getActiveAnchor() ?? "";
+  const squareBox = (
+    tr: Konva.Transformer | null,
+    s: Shape | undefined,
+    _oldBox: TransformBox,
+    newBox: TransformBox,
+  ): TransformBox => {
+    const anchor = tr?.getActiveAnchor() ?? "";
     // Pictures keep their proportions instead; Shift frees them (Konva's keepRatio).
-    if (!shiftRef.current || selected?.kind === "image" || anchor === "rotater" || Math.abs(newBox.rotation) > 1e-3)
+    if (!shiftRef.current || s?.kind === "image" || anchor === "rotater" || Math.abs(newBox.rotation) > 1e-3)
       return newBox;
     const { x, y, width: w, height: h } = newBox;
     const side = anchor.endsWith("center") ? h : anchor.startsWith("middle") ? w : Math.max(w, h);
@@ -668,19 +730,56 @@ export function Editor({ name, onClose, notify }: Props) {
 
   // --- selection -----------------------------------------------------------------------
 
-  const selected = shapes.find((s) => s.id === selectedId);
+  /** The selected shape, when exactly one is selected: handles, resizing, restyling. */
+  const selected = selectedIds.length === 1 ? shapes.find((s) => s.id === selectedIds[0]) : undefined;
+  const multi = selectedIds.length > 1;
+  const isSelected = (id: string) => selectedIds.includes(id);
 
+  // One shape: resize and rotate handles when it has a box. Several: a frame around them all,
+  // moved together (Konva drags every node of the transformer), without handles.
   useEffect(() => {
     const tr = trRef.current;
-    if (!tr) return;
-    const transformable = selected && (isBox(selected) || selected.kind === "text" || selected.kind === "callout");
-    const node = transformable ? stageRef.current?.findOne((n: KonvaNode) => n.id() === selected.id) : undefined;
-    tr.nodes(node ? [node] : []);
+    const stage = stageRef.current;
+    if (!tr || !stage) return;
+    let ids: string[] = [];
+    if (multi) ids = selectedIds;
+    else if (selected && (isBox(selected) || selected.kind === "text" || selected.kind === "callout"))
+      ids = [selected.id];
+    tr.nodes(ids.flatMap((id) => stage.findOne((n: KonvaNode) => n.id() === id) ?? []));
     tr.getLayer()?.batchDraw();
-  }, [selected, shapes]);
+  }, [selected, selectedIds, multi, shapes]);
+
+  /** Where a group drag started: the shape grabbed and its node position then. */
+  const groupDrag = useRef<{ id: string; x: number; y: number } | null>(null);
+
+  const onDragStart = (s: Shape) => (e: KonvaEventObject<DragEvent>) => {
+    if (!isSelected(s.id)) {
+      setSelectedId(s.id);
+      return;
+    }
+    // Konva starts dragging the other selected nodes from the grabbed one: keep the first.
+    if (multi && !groupDrag.current) groupDrag.current = { id: s.id, x: e.target.x(), y: e.target.y() };
+  };
 
   const onDragEnd = (s: Shape) => (e: KonvaEventObject<DragEvent>) => {
     const n = e.target;
+    const group = groupDrag.current;
+    if (group) {
+      // The others end their drag too, before or after the grabbed one: only the grabbed
+      // shape moves the whole selection. Konva ends them all at once, so the group is
+      // forgotten right after, not here, or a later one would commit its own move alone.
+      if (group.id !== s.id) return;
+      setTimeout(() => (groupDrag.current = null));
+      const [dx, dy] = [n.x() - group.x, n.y() - group.y];
+      const stage = stageRef.current;
+      commit(shapes.map((sh) => (isSelected(sh.id) ? translate(sh, dx, dy) : sh)));
+      // Shapes drawn from points sit at (0, 0); the move is in the points now.
+      for (const sh of shapes) {
+        if (isSelected(sh.id) && "points" in sh)
+          stage?.findOne((node: KonvaNode) => node.id() === sh.id)?.position({ x: 0, y: 0 });
+      }
+      return;
+    }
     if (s.kind === "arrow" || s.kind === "line") {
       const [dx, dy] = [n.x(), n.y()];
       n.position({ x: 0, y: 0 });
@@ -734,8 +833,8 @@ export function Editor({ name, onClose, notify }: Props) {
   };
 
   const removeSelected = () => {
-    if (!selectedId) return;
-    commit(shapes.filter((s) => s.id !== selectedId));
+    if (selectedIds.length === 0) return;
+    commit(shapes.filter((s) => !isSelected(s.id)));
     setSelectedId(null);
     setCursor("");
   };
@@ -750,8 +849,14 @@ export function Editor({ name, onClose, notify }: Props) {
       id: s.id,
       listening: interactive,
       draggable: interactive,
-      onMouseDown: () => setSelectedId(s.id),
-      onDragStart: () => setSelectedId(s.id),
+      // Ctrl+click adds the shape to the selection or takes it out; a plain click on a shape
+      // of the selection keeps it, so the whole selection can be dragged.
+      onMouseDown: (e: KonvaEventObject<MouseEvent>) => {
+        if (e.evt.ctrlKey || e.evt.metaKey)
+          setSelectedIds((ids) => (ids.includes(s.id) ? ids.filter((id) => id !== s.id) : [...ids, s.id]));
+        else if (!isSelected(s.id)) setSelectedId(s.id);
+      },
+      onDragStart: onDragStart(s),
       onDragEnd: onDragEnd(s),
       onMouseEnter: () => setCursor("move"),
       onMouseLeave: () => setCursor(""),
@@ -1269,11 +1374,15 @@ export function Editor({ name, onClose, notify }: Props) {
     else if (mod && key === "s") save();
     else if (mod && key === "c") copyImage();
     else if (mod && key === "v") pasteImage();
+    else if (mod && key === "a") {
+      setTool("select");
+      setSelectedIds(shapes.map((s) => s.id));
+    }
     else if (e.key === "Delete" || e.key === "Backspace") removeSelected();
     else if (polyRef.current && e.key === "Enter") finishPolygon(polyRef.current.slice(0, -2));
     else if (e.key === "Escape") {
       if (polyRef.current) setPolyDraft(null);
-      else if (selectedId) setSelectedId(null);
+      else if (selectedIds.length > 0) setSelectedId(null);
       else setTool("select");
     } else if (!mod && !e.altKey) {
       const t = TOOLS.find((t) => t.key === key);
@@ -1298,14 +1407,17 @@ export function Editor({ name, onClose, notify }: Props) {
     if (e.ctrlKey) zoomTo(zoom * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP));
   };
 
-  // A colour or size picked with a shape selected restyles that shape.
+  // A colour or size picked with shapes selected restyles them.
+  const restyle = (f: (s: Shape) => Shape) => {
+    if (selectedIds.length > 0) commit(shapes.map((s) => (isSelected(s.id) ? f(s) : s)));
+  };
   const pickColor = (c: string) => {
     setColor(c);
-    if (selected && selected.kind !== "blur") update(selected.id, (s) => ({ ...s, color: c }));
+    restyle((s) => (s.kind === "blur" ? s : { ...s, color: c }));
   };
   const pickSize = (i: number) => {
     setSizeIdx(i);
-    if (selected) update(selected.id, (s) => ({ ...s, width: SIZES[i] * scale }));
+    restyle((s) => ({ ...s, width: SIZES[i] * scale }));
   };
 
   return (
@@ -1383,7 +1495,7 @@ export function Editor({ name, onClose, notify }: Props) {
           tint="#e5484d"
           label={tr("common.delete")}
           onClick={removeSelected}
-          disabled={!selected}
+          disabled={selectedIds.length === 0}
           title={tr("editor.deleteHint")}
         />
         <div className="ribbon-sep" />
@@ -1465,38 +1577,29 @@ export function Editor({ name, onClose, notify }: Props) {
                 </Layer>
                 <Layer ref={uiRef} scaleX={zoom} scaleY={zoom} x={-crop.x * zoom} y={-crop.y * zoom}>
                   {cropDraft && cropShade(normalizeBox(cropDraft))}
+                  {/* One shape: its handles. Several: this one only drags them together, and each
+                      shape gets its own frame and handles, as in PowerPoint. */}
                   <Transformer
                     ref={trRef}
-                    rotateEnabled={
-                      selected?.kind !== "blur" && selected?.kind !== "magnify" && selected?.kind !== "callout"
-                    }
-                    enabledAnchors={
-                      selected?.kind === "text"
-                        ? []
-                        : [
-                            "top-left",
-                            "top-center",
-                            "top-right",
-                            "middle-right",
-                            "bottom-right",
-                            "bottom-center",
-                            "bottom-left",
-                            "middle-left",
-                          ]
-                    }
-                    keepRatio={selected?.kind === "image"}
-                    boundBoxFunc={squareBox}
-                    ignoreStroke
-                    flipEnabled={false}
-                    anchorSize={HANDLE}
-                    anchorCornerRadius={0}
-                    anchorStroke="#1c1f24"
-                    anchorFill="#ffffff"
-                    borderStroke={ACCENT}
-                    borderDash={[4, 4]}
-                    rotateAnchorOffset={24}
-                    rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
+                    {...(multi ? { enabledAnchors: [], rotateEnabled: false, borderEnabled: false } : frameProps(selected))}
+                    boundBoxFunc={(o, n) => squareBox(trRef.current, selected, o, n)}
                   />
+                  {multi &&
+                    selectedIds.map((id) => {
+                      const s = shapes.find((sh) => sh.id === id);
+                      return (
+                        s && (
+                          <ShapeFrame
+                            key={id}
+                            nodeId={id}
+                            stage={stageRef.current}
+                            deps={shapes}
+                            {...frameProps(s)}
+                            box={(tr, o, n) => squareBox(tr, s, o, n)}
+                          />
+                        )
+                      );
+                    })}
                   {endpointHandles()}
                   {tailHandle()}
                 </Layer>

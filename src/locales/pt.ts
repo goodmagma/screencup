@@ -253,4 +253,6 @@ export const pt: Record<Key, string> = {
   "editor.pasteImageHint": "Cola uma imagem da área de transferência sobre a captura",
   "editor.pasteEmpty": "A área de transferência não tem imagem",
   "sc.pasteImage": "Colar uma imagem da área de transferência",
+  "sc.selectAllShapes": "Selecionar todas as formas",
+  "sc.multiSelectShapes": "Adicionar ou remover uma forma da seleção",
 };
