@@ -172,18 +172,20 @@ const CLOSE_DISTANCE = 10;
 const FONT_FAMILY = "system-ui, 'Segoe UI', sans-serif";
 
 /** Path of a curly brace "}" filling w x h: tip on the middle of the right side. */
-function bracePath(ctx: KonvaContext, w: number, h: number) {
+function bracePath(ctx: KonvaContext, w: number, h: number, open = false) {
   const r = Math.min(h / 4, w / 2);
   const mid = h / 2;
-  const x = w / 2;
+  // An opening brace is the closing one mirrored.
+  const m = (x: number) => (open ? w - x : x);
+  const x = m(w / 2);
   ctx.beginPath();
-  ctx.moveTo(0, 0);
+  ctx.moveTo(m(0), 0);
   ctx.quadraticCurveTo(x, 0, x, r);
   ctx.lineTo(x, mid - r);
-  ctx.quadraticCurveTo(x, mid, w, mid);
+  ctx.quadraticCurveTo(x, mid, m(w), mid);
   ctx.quadraticCurveTo(x, mid, x, mid + r);
   ctx.lineTo(x, h - r);
-  ctx.quadraticCurveTo(x, h, 0, h);
+  ctx.quadraticCurveTo(x, h, m(0), h);
 }
 
 /**
@@ -614,7 +616,8 @@ export function Editor({ name, onClose, notify }: Props) {
       setTextEdit({ id: d.id, x: b.x, y: b.y, color: d.color, width: d.width, value: "", box: { w: b.w, h: b.h } });
       return;
     }
-    commit([...shapes, isBox(d) ? normalizeBox(d) : d]);
+    const done = d.kind === "brace" && d.w < 0 ? { ...d, open: true } : d;
+    commit([...shapes, isBox(done) ? normalizeBox(done) : done]);
     setSelectedId(d.id);
   }, [commit, shapes, img]);
 
@@ -839,16 +842,20 @@ export function Editor({ name, onClose, notify }: Props) {
             fillEnabled={false}
           />
         );
-      case "brace":
+      case "brace": {
+        // While drawing, the box can still have a negative width or height: dragging to the
+        // left draws an opening brace.
+        const b = normalizeBox(s);
+        const open = s.open ?? s.w < 0;
         return (
           <KShape
             key={s.id}
             {...handlers}
             onTransformEnd={onTransformEnd(s)}
-            x={s.x}
-            y={s.y}
-            width={s.w}
-            height={s.h}
+            x={b.x}
+            y={b.y}
+            width={b.w}
+            height={b.h}
             rotation={s.rotation ?? 0}
             stroke={s.color}
             strokeWidth={s.width}
@@ -857,11 +864,12 @@ export function Editor({ name, onClose, notify }: Props) {
             hitStrokeWidth={hit}
             fillEnabled={false}
             sceneFunc={(ctx: KonvaContext, shape: KonvaShapeNode) => {
-              bracePath(ctx, s.w, s.h);
+              bracePath(ctx, b.w, b.h, open);
               ctx.fillStrokeShape(shape);
             }}
           />
         );
+      }
       case "callout": {
         const size = fontSize(s.width);
         const pad = size * 0.6;

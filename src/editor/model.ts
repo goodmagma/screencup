@@ -56,6 +56,8 @@ export type BoxShape = Base & {
   rotation?: number;
   /** "image" only: the picture as a PNG data URL, so the annotations file is self-contained. */
   src?: string;
+  /** "brace" only: an opening brace "{", pointing left, as drawn from right to left. */
+  open?: boolean;
 };
 export type TextShape = Base & { kind: "text"; x: number; y: number; text: string; rotation?: number };
 export type StepShape = Base & { kind: "step"; x: number; y: number; n: number };
