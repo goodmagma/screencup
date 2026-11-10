@@ -44,6 +44,7 @@ function sections(hotkeys: Hotkeys | undefined): { title: string; hint?: string;
         [acc("Control+KeyC"), t("common.copyToClipboard")],
         [acc("Control+KeyV"), t("sc.paste")],
         [k("key.Delete"), t("sc.delete")],
+        [acc("Control+KeyZ"), t("sc.undoDelete")],
         ["F1", t("sc.help")],
         [acc("Escape"), t("sc.hide")],
       ],

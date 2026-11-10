@@ -20,8 +20,8 @@ export const es: Record<Key, string> = {
   "gallery.captured": "Capturada y copiada al portapapeles",
   "gallery.recordingFailed": "La grabación ha fallado: {error}",
   "gallery.audioWarning": "Audio: {warning}",
-  "gallery.trashedOne": "Movida a la papelera",
-  "gallery.trashedMany": "{count} capturas movidas a la papelera",
+  "gallery.trashedOne": "Movida a la papelera (Ctrl+Z para deshacer)",
+  "gallery.trashedMany": "{count} capturas movidas a la papelera (Ctrl+Z para deshacer)",
   "gallery.play": "Reproducir",
   "gallery.edit": "Editar",
   "gallery.editMenu": "Editar...",
@@ -255,4 +255,7 @@ export const es: Record<Key, string> = {
   "sc.pasteImage": "Pegar una imagen del portapapeles",
   "sc.selectAllShapes": "Seleccionar todas las formas",
   "sc.multiSelectShapes": "Añadir o quitar una forma de la selección",
+  "gallery.restoredOne": "Restaurada de la papelera",
+  "gallery.restoredMany": "{count} capturas restauradas de la papelera",
+  "sc.undoDelete": "Deshacer la última eliminación",
 };

@@ -138,6 +138,7 @@ pub fn run() {
         .manage(clipboard::Clipboard::default())
         .manage(recorder::Recorder::default())
         .manage(hotkeys::Bindings::default())
+        .manage(library::Trashed::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Launched at login with --autostart; the app starts hidden in the tray either way.
@@ -190,6 +191,7 @@ pub fn run() {
             clipboard::copy_capture,
             library::list_captures,
             library::delete_captures,
+            library::undo_delete,
             library::drag_captures,
             library::open_capture_with,
             library::import_captures,

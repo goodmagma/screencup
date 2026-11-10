@@ -20,8 +20,8 @@ export const de: Record<Key, string> = {
   "gallery.captured": "Aufgenommen und in die Zwischenablage kopiert",
   "gallery.recordingFailed": "Aufnahme fehlgeschlagen: {error}",
   "gallery.audioWarning": "Audio: {warning}",
-  "gallery.trashedOne": "In den Papierkorb verschoben",
-  "gallery.trashedMany": "{count} Aufnahmen in den Papierkorb verschoben",
+  "gallery.trashedOne": "In den Papierkorb verschoben (Strg+Z zum Rückgängigmachen)",
+  "gallery.trashedMany": "{count} Aufnahmen in den Papierkorb verschoben (Strg+Z zum Rückgängigmachen)",
   "gallery.play": "Abspielen",
   "gallery.edit": "Bearbeiten",
   "gallery.editMenu": "Bearbeiten...",
@@ -255,4 +255,7 @@ export const de: Record<Key, string> = {
   "sc.pasteImage": "Bild aus der Zwischenablage einfügen",
   "sc.selectAllShapes": "Alle Formen auswählen",
   "sc.multiSelectShapes": "Form zur Auswahl hinzufügen oder entfernen",
+  "gallery.restoredOne": "Aus dem Papierkorb wiederhergestellt",
+  "gallery.restoredMany": "{count} Aufnahmen aus dem Papierkorb wiederhergestellt",
+  "sc.undoDelete": "Letztes Löschen rückgängig machen",
 };

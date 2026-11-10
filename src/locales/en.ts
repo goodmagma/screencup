@@ -20,8 +20,8 @@ export const en: Record<Key, string> = {
   "gallery.captured": "Captured and copied to the clipboard",
   "gallery.recordingFailed": "Recording failed: {error}",
   "gallery.audioWarning": "Audio: {warning}",
-  "gallery.trashedOne": "Moved to the trash",
-  "gallery.trashedMany": "{count} captures moved to the trash",
+  "gallery.trashedOne": "Moved to the trash (Ctrl+Z to undo)",
+  "gallery.trashedMany": "{count} captures moved to the trash (Ctrl+Z to undo)",
   "gallery.play": "Play",
   "gallery.edit": "Edit",
   "gallery.editMenu": "Edit...",
@@ -255,5 +255,8 @@ export const en: Record<Key, string> = {
   "sc.pasteImage": "Paste a picture from the clipboard",
   "sc.selectAllShapes": "Select all shapes",
   "sc.multiSelectShapes": "Add a shape to the selection or remove it",
+  "gallery.restoredOne": "Restored from the trash",
+  "gallery.restoredMany": "{count} captures restored from the trash",
+  "sc.undoDelete": "Undo the last deletion",
 };
 

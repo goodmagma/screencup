@@ -298,6 +298,17 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
     [notify, refresh],
   );
 
+  /** Brings back the captures of the last deletion from the trash. */
+  const undoDelete = () =>
+    invoke<string[]>("undo_delete")
+      .then(async (names) => {
+        if (names.length === 0) return;
+        notify(names.length === 1 ? t("gallery.restoredOne") : t("gallery.restoredMany", { count: names.length }));
+        await refresh();
+        setSelection(names);
+      })
+      .catch((e) => notify(String(e), true));
+
   /** Where a left press on a tile started; moving past DRAG_START turns it into a file drag. */
   const press = useRef<{ name: string; x: number; y: number } | null>(null);
 
@@ -352,6 +363,9 @@ export function Gallery({ notify }: { notify: (message: string, long?: boolean) 
       } else if (mod && e.key.toLowerCase() === "v") {
         e.preventDefault();
         paste();
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undoDelete();
       } else if (e.key === "Delete") remove(selection);
       if (!selected) return;
       if (e.key === "Enter") edit(selected);

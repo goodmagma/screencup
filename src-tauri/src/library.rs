@@ -3,12 +3,13 @@
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use tauri::http::{Request, Response, header::CONTENT_TYPE};
-use tauri::{AppHandle, Emitter, Manager, Runtime, UriSchemeContext, UriSchemeResponder};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, UriSchemeContext, UriSchemeResponder};
 use xcap::image::{ImageFormat, RgbaImage};
 
 /// Longest side of a gallery thumbnail, in pixels (cards are ~200 CSS px, so 2x DPI fits).
@@ -138,12 +139,119 @@ pub fn list_captures(app: AppHandle) -> Result<Vec<Capture>, String> {
 
 /// Moves captures, with their originals and annotations if they were edited, to the OS
 /// trash (recoverable) in one operation, and drops their cached thumbnails.
+/// Ctrl+Z in the gallery brings them back (see `undo_delete`).
 #[tauri::command]
-pub fn delete_captures(app: AppHandle, names: Vec<String>) -> Result<(), String> {
-    trash_captures(&app, &names)
+pub fn delete_captures(app: AppHandle, trashed: State<Trashed>, names: Vec<String>) -> Result<(), String> {
+    let backup = trashed.backup(&app, &capture_files(&app, &names)?);
+    let files = trash_captures(&app, &names)?;
+    if !files.is_empty() {
+        let mut batches = trashed.batches.lock().unwrap();
+        batches.push(Batch { names, files, backup });
+        if batches.len() > UNDO_DEPTH {
+            let old = batches.remove(0);
+            if let Some(dir) = old.backup {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+        }
+    }
+    Ok(())
 }
 
-fn trash_captures<R: Runtime>(app: &AppHandle<R>, names: &[String]) -> Result<(), String> {
+/// How many deletions Ctrl+Z can undo.
+const UNDO_DEPTH: usize = 20;
+
+/// One deletion from the gallery: the captures and every file that went to the trash.
+struct Batch {
+    names: Vec<String>,
+    files: Vec<PathBuf>,
+    /// macOS only: copies of the files, since its trash cannot be listed to restore them.
+    backup: Option<PathBuf>,
+}
+
+/// The gallery deletions of this session, newest last, for undo.
+#[derive(Default)]
+pub struct Trashed {
+    batches: Mutex<Vec<Batch>>,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    next: Mutex<u32>,
+}
+
+impl Trashed {
+    /// On macOS, copies the files about to be trashed to the cache, to restore them from there.
+    #[allow(unused_variables)]
+    fn backup<R: Runtime>(&self, app: &AppHandle<R>, files: &[PathBuf]) -> Option<PathBuf> {
+        #[cfg(target_os = "macos")]
+        {
+            let root = app.path().app_cache_dir().ok()?.join("undo");
+            let mut next = self.next.lock().unwrap();
+            if *next == 0 {
+                // Leftovers of an earlier session, which cannot be undone any more.
+                let _ = std::fs::remove_dir_all(&root);
+            }
+            *next += 1;
+            let dir = root.join(next.to_string());
+            std::fs::create_dir_all(&dir).ok()?;
+            for (i, f) in files.iter().enumerate() {
+                std::fs::copy(f, dir.join(i.to_string())).ok()?;
+            }
+            return Some(dir);
+        }
+        #[allow(unreachable_code)]
+        None
+    }
+}
+
+/// Undoes the last deletion from the gallery: its files come back from the trash. Returns the
+/// captures restored; empty when there is nothing to undo or the files left the trash.
+#[tauri::command]
+pub fn undo_delete(trashed: State<Trashed>) -> Result<Vec<String>, String> {
+    let Some(batch) = trashed.batches.lock().unwrap().pop() else {
+        return Ok(Vec::new());
+    };
+    restore(&batch)?;
+    if let Some(dir) = &batch.backup {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    Ok(batch.names.into_iter().filter(|n| batch.files.iter().any(|f| f.ends_with(n) && f.exists())).collect())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn restore(batch: &Batch) -> Result<(), String> {
+    // Paths compare without case on Windows, where the shell may report another case.
+    let key = |p: &Path| {
+        let s = p.to_string_lossy().into_owned();
+        if cfg!(windows) { s.to_lowercase() } else { s }
+    };
+    let mut found: std::collections::HashMap<String, trash::TrashItem> = std::collections::HashMap::new();
+    for item in trash::os_limited::list().map_err(|e| e.to_string())? {
+        let k = key(&item.original_path());
+        // Only files of this deletion still missing; the newest copy when deleted twice.
+        if !batch.files.iter().any(|f| key(f) == k && !f.exists()) {
+            continue;
+        }
+        if found.get(&k).is_none_or(|old| old.time_deleted < item.time_deleted) {
+            found.insert(k, item);
+        }
+    }
+    trash::os_limited::restore_all(found.into_values()).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn restore(batch: &Batch) -> Result<(), String> {
+    let Some(dir) = &batch.backup else { return Ok(()) };
+    for (i, f) in batch.files.iter().enumerate() {
+        if !f.exists() {
+            if let Some(parent) = f.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::copy(dir.join(i.to_string()), f).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// The capture files of `names` with their originals and annotations, those that exist.
+fn capture_files<R: Runtime>(app: &AppHandle<R>, names: &[String]) -> Result<Vec<PathBuf>, String> {
     let originals = crate::edits::originals_dir(app)?;
     let mut files = Vec::new();
     for name in names {
@@ -153,16 +261,22 @@ fn trash_captures<R: Runtime>(app: &AppHandle<R>, names: &[String]) -> Result<()
                 .filter(|p| p.exists()),
         );
     }
+    Ok(files)
+}
+
+/// Moves the captures to the trash; returns the files moved.
+fn trash_captures<R: Runtime>(app: &AppHandle<R>, names: &[String]) -> Result<Vec<PathBuf>, String> {
+    let files = capture_files(app, names)?;
     if files.is_empty() {
-        return Ok(());
+        return Ok(files);
     }
-    trash::delete_all(files).map_err(|e| e.to_string())?;
+    trash::delete_all(&files).map_err(|e| e.to_string())?;
     if let Ok(thumbs) = thumbs_dir(app) {
         for name in names {
             let _ = std::fs::remove_file(thumbs.join(name));
         }
     }
-    Ok(())
+    Ok(files)
 }
 
 /// Keeps at most `max_captures` (from the settings; 0 = no limit) captures in the library by

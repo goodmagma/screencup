@@ -20,8 +20,8 @@ export const pt: Record<Key, string> = {
   "gallery.captured": "Capturada e copiada para a área de transferência",
   "gallery.recordingFailed": "Falha na gravação: {error}",
   "gallery.audioWarning": "Áudio: {warning}",
-  "gallery.trashedOne": "Movida para a lixeira",
-  "gallery.trashedMany": "{count} capturas movidas para a lixeira",
+  "gallery.trashedOne": "Movida para a lixeira (Ctrl+Z para desfazer)",
+  "gallery.trashedMany": "{count} capturas movidas para a lixeira (Ctrl+Z para desfazer)",
   "gallery.play": "Reproduzir",
   "gallery.edit": "Editar",
   "gallery.editMenu": "Editar...",
@@ -255,4 +255,7 @@ export const pt: Record<Key, string> = {
   "sc.pasteImage": "Colar uma imagem da área de transferência",
   "sc.selectAllShapes": "Selecionar todas as formas",
   "sc.multiSelectShapes": "Adicionar ou remover uma forma da seleção",
+  "gallery.restoredOne": "Restaurada da lixeira",
+  "gallery.restoredMany": "{count} capturas restauradas da lixeira",
+  "sc.undoDelete": "Desfazer a última exclusão",
 };

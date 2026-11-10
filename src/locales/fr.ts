@@ -20,8 +20,8 @@ export const fr: Record<Key, string> = {
   "gallery.captured": "Capturée et copiée dans le presse-papiers",
   "gallery.recordingFailed": "Échec de l'enregistrement : {error}",
   "gallery.audioWarning": "Audio : {warning}",
-  "gallery.trashedOne": "Déplacée dans la corbeille",
-  "gallery.trashedMany": "{count} captures déplacées dans la corbeille",
+  "gallery.trashedOne": "Déplacée dans la corbeille (Ctrl+Z pour annuler)",
+  "gallery.trashedMany": "{count} captures déplacées dans la corbeille (Ctrl+Z pour annuler)",
   "gallery.play": "Lire",
   "gallery.edit": "Modifier",
   "gallery.editMenu": "Modifier...",
@@ -255,4 +255,7 @@ export const fr: Record<Key, string> = {
   "sc.pasteImage": "Coller une image du presse-papiers",
   "sc.selectAllShapes": "Sélectionner toutes les formes",
   "sc.multiSelectShapes": "Ajouter ou retirer une forme de la sélection",
+  "gallery.restoredOne": "Restaurée depuis la corbeille",
+  "gallery.restoredMany": "{count} captures restaurées depuis la corbeille",
+  "sc.undoDelete": "Annuler la dernière suppression",
 };

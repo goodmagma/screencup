@@ -21,8 +21,8 @@ export const it = {
   "gallery.captured": "Catturata e copiata negli appunti",
   "gallery.recordingFailed": "Registrazione non riuscita: {error}",
   "gallery.audioWarning": "Audio: {warning}",
-  "gallery.trashedOne": "Spostata nel cestino",
-  "gallery.trashedMany": "{count} catture spostate nel cestino",
+  "gallery.trashedOne": "Spostata nel cestino (Ctrl+Z per annullare)",
+  "gallery.trashedMany": "{count} catture spostate nel cestino (Ctrl+Z per annullare)",
   "gallery.play": "Riproduci",
   "gallery.edit": "Modifica",
   "gallery.editMenu": "Modifica...",
@@ -260,6 +260,9 @@ export const it = {
   "sc.pasteImage": "Incolla un'immagine dagli appunti",
   "sc.selectAllShapes": "Seleziona tutte le forme",
   "sc.multiSelectShapes": "Aggiungi o togli una forma dalla selezione",
+  "gallery.restoredOne": "Ripristinata dal cestino",
+  "gallery.restoredMany": "{count} catture ripristinate dal cestino",
+  "sc.undoDelete": "Annulla l'ultima eliminazione",
 };
 
 export type Key = keyof typeof it;
