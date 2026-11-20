@@ -258,4 +258,7 @@ export const fr: Record<Key, string> = {
   "gallery.restoredOne": "Restaurée depuis la corbeille",
   "gallery.restoredMany": "{count} captures restaurées depuis la corbeille",
   "sc.undoDelete": "Annuler la dernière suppression",
+  "sc.copyShapes": "Copier les formes sélectionnées (Ctrl+V les colle)",
+  "sc.nudgeShapes": "Déplacer les formes sélectionnées de 1 pixel",
+  "sc.nudgeShapesFar": "Déplacer les formes sélectionnées de 10 pixels",
 };

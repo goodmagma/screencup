@@ -263,6 +263,9 @@ export const it = {
   "gallery.restoredOne": "Ripristinata dal cestino",
   "gallery.restoredMany": "{count} catture ripristinate dal cestino",
   "sc.undoDelete": "Annulla l'ultima eliminazione",
+  "sc.copyShapes": "Copia le forme selezionate (Ctrl+V le incolla)",
+  "sc.nudgeShapes": "Sposta le forme selezionate di 1 pixel",
+  "sc.nudgeShapesFar": "Sposta le forme selezionate di 10 pixel",
 };
 
 export type Key = keyof typeof it;

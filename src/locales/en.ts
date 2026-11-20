@@ -258,5 +258,8 @@ export const en: Record<Key, string> = {
   "gallery.restoredOne": "Restored from the trash",
   "gallery.restoredMany": "{count} captures restored from the trash",
   "sc.undoDelete": "Undo the last deletion",
+  "sc.copyShapes": "Copy the selected shapes (Ctrl+V pastes them)",
+  "sc.nudgeShapes": "Move the selected shapes by 1 pixel",
+  "sc.nudgeShapesFar": "Move the selected shapes by 10 pixels",
 };
 

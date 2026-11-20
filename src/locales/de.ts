@@ -258,4 +258,7 @@ export const de: Record<Key, string> = {
   "gallery.restoredOne": "Aus dem Papierkorb wiederhergestellt",
   "gallery.restoredMany": "{count} Aufnahmen aus dem Papierkorb wiederhergestellt",
   "sc.undoDelete": "Letztes Löschen rückgängig machen",
+  "sc.copyShapes": "Ausgewählte Formen kopieren (Strg+V fügt sie ein)",
+  "sc.nudgeShapes": "Ausgewählte Formen um 1 Pixel verschieben",
+  "sc.nudgeShapesFar": "Ausgewählte Formen um 10 Pixel verschieben",
 };

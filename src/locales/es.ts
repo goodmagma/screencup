@@ -258,4 +258,7 @@ export const es: Record<Key, string> = {
   "gallery.restoredOne": "Restaurada de la papelera",
   "gallery.restoredMany": "{count} capturas restauradas de la papelera",
   "sc.undoDelete": "Deshacer la última eliminación",
+  "sc.copyShapes": "Copiar las formas seleccionadas (Ctrl+V las pega)",
+  "sc.nudgeShapes": "Mover las formas seleccionadas 1 píxel",
+  "sc.nudgeShapesFar": "Mover las formas seleccionadas 10 píxeles",
 };

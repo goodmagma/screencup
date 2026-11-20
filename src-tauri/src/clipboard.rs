@@ -81,6 +81,27 @@ pub async fn paste_capture(app: AppHandle) -> Result<Vec<std::path::PathBuf>, St
 
 /// Ctrl+V in the editor: the clipboard image, or the first image among the files copied in
 /// the file manager, as PNG bytes. Empty when the clipboard holds neither.
+/// Marks editor shapes copied to the clipboard as text, so that any later copy replaces them.
+const SHAPES_PREFIX: &str = "screencup-shapes:";
+
+/// Puts editor shapes (JSON) on the clipboard.
+#[tauri::command]
+pub fn copy_shapes(app: AppHandle, json: String) -> Result<(), String> {
+    copy_text(&app, &format!("{SHAPES_PREFIX}{json}"))
+}
+
+/// The editor shapes (JSON) on the clipboard, if it holds shapes copied by `copy_shapes`.
+#[tauri::command]
+pub fn clipboard_shapes(app: AppHandle) -> Result<Option<String>, String> {
+    let state = app.state::<Clipboard>();
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    if guard.is_none() {
+        *guard = Some(arboard::Clipboard::new().map_err(|e| e.to_string())?);
+    }
+    let text = guard.as_mut().expect("clipboard initialised above").get_text().ok();
+    Ok(text.and_then(|t| t.strip_prefix(SHAPES_PREFIX).map(str::to_owned)))
+}
+
 #[tauri::command]
 pub async fn clipboard_image(app: AppHandle) -> Result<tauri::ipc::Response, String> {
     let png = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {

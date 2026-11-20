@@ -258,4 +258,7 @@ export const pt: Record<Key, string> = {
   "gallery.restoredOne": "Restaurada da lixeira",
   "gallery.restoredMany": "{count} capturas restauradas da lixeira",
   "sc.undoDelete": "Desfazer a última exclusão",
+  "sc.copyShapes": "Copiar as formas selecionadas (Ctrl+V cola)",
+  "sc.nudgeShapes": "Mover as formas selecionadas 1 pixel",
+  "sc.nudgeShapesFar": "Mover as formas selecionadas 10 pixels",
 };

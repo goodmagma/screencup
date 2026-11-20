@@ -461,6 +461,13 @@ export function Editor({ name, onClose, notify }: Props) {
   /** Changes crop or output scale, as one undo step. */
   const commitDoc = (patch: Partial<Doc>) => setHistory((h) => push(h, { ...h.stack[h.index], ...patch }));
   const update = (id: string, f: (s: Shape) => Shape) => commit(shapes.map((s) => (s.id === id ? f(s) : s)));
+  /** Changes the shapes within the current undo step, instead of adding one. */
+  const amend = (next: Shape[]) =>
+    setHistory((h) => {
+      const stack = h.stack.slice(0, h.index + 1);
+      stack[h.index] = { ...stack[h.index], shapes: next };
+      return { ...h, stack };
+    });
 
   const pointer = () => {
     const p = stageRef.current!.getPointerPosition()!;
@@ -1363,6 +1370,62 @@ export function Editor({ name, onClose, notify }: Props) {
     }
   };
 
+  /** Ctrl+C with shapes selected: they go to the clipboard, to paste in this or another editor. */
+  const copyShapes = async () => {
+    try {
+      await invoke("copy_shapes", { json: JSON.stringify(shapes.filter((s) => isSelected(s.id))) });
+      notify(tr("common.copied"));
+    } catch (e) {
+      notify(String(e));
+    }
+  };
+
+  /** How many times the shapes on the clipboard were pasted: each paste lands further away. */
+  const pastes = useRef<{ json: string; count: number }>({ json: "", count: 0 });
+
+  /** Ctrl+V: shapes copied in an editor, offset as in PowerPoint and selected; else a picture. */
+  const paste = async () => {
+    let json: string | null = null;
+    try {
+      json = await invoke<string | null>("clipboard_shapes");
+    } catch {
+      // No text on the clipboard: try a picture.
+    }
+    if (!json) return pasteImage();
+    let copied: Shape[];
+    try {
+      copied = JSON.parse(json);
+    } catch {
+      return pasteImage();
+    }
+    if (!Array.isArray(copied) || copied.length === 0) return;
+    const count = pastes.current.json === json ? pastes.current.count + 1 : 1;
+    pastes.current = { json, count };
+    const d = 20 * scale * count;
+    // Numbered steps continue the numbering instead of repeating it.
+    let step = Math.max(0, ...shapes.map((s) => (s.kind === "step" ? s.n : 0)));
+    const added = copied.map((s) => {
+      const moved = translate({ ...s, id: crypto.randomUUID() }, d, d);
+      return moved.kind === "step" ? { ...moved, n: ++step } : moved;
+    });
+    commit([...shapes, ...added]);
+    setTool("select");
+    setSelectedIds(added.map((s) => s.id));
+  };
+
+  /** Arrow keys move the selection by one image pixel, ten with Shift. Holding a key is one undo step. */
+  const nudge = (e: KeyboardEvent) => {
+    const step = e.shiftKey ? 10 : 1;
+    const [dx, dy] = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    }[e.key as "ArrowLeft"]!;
+    const next = shapes.map((s) => (isSelected(s.id) ? translate(s, dx, dy) : s));
+    (e.repeat ? amend : commit)(next);
+  };
+
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
     if (textEdit || askClose || resizeOpen || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement)
@@ -1372,8 +1435,9 @@ export function Editor({ name, onClose, notify }: Props) {
     if (mod && key === "z") (e.shiftKey ? redo : undo)();
     else if (mod && key === "y") redo();
     else if (mod && key === "s") save();
-    else if (mod && key === "c") copyImage();
-    else if (mod && key === "v") pasteImage();
+    else if (mod && key === "c") (selectedIds.length > 0 ? copyShapes : copyImage)();
+    else if (mod && key === "v") paste();
+    else if (!mod && !e.altKey && selectedIds.length > 0 && e.key.startsWith("Arrow")) nudge(e);
     else if (mod && key === "a") {
       setTool("select");
       setSelectedIds(shapes.map((s) => s.id));
