@@ -261,5 +261,15 @@ export const en: Record<Key, string> = {
   "sc.copyShapes": "Copy the selected shapes (Ctrl+V pastes them)",
   "sc.nudgeShapes": "Move the selected shapes by 1 pixel",
   "sc.nudgeShapesFar": "Move the selected shapes by 10 pixels",
+  "editor.bringToFront": "To front",
+  "editor.sendToBack": "To back",
+  "sc.forwardBackward": "Bring the selected shapes forward / send them backward",
+  "sc.frontBack": "Bring the selected shapes to front / send them to back",
+  "editor.menuCopy": "Copy",
+  "editor.menuPaste": "Paste",
+  "editor.menuToFront": "Bring to front",
+  "editor.menuForward": "Bring forward",
+  "editor.menuBackward": "Send backward",
+  "editor.menuToBack": "Send to back",
 };
 

@@ -266,6 +266,16 @@ export const it = {
   "sc.copyShapes": "Copia le forme selezionate (Ctrl+V le incolla)",
   "sc.nudgeShapes": "Sposta le forme selezionate di 1 pixel",
   "sc.nudgeShapesFar": "Sposta le forme selezionate di 10 pixel",
+  "editor.bringToFront": "Primo piano",
+  "editor.sendToBack": "Secondo piano",
+  "sc.forwardBackward": "Porta le forme selezionate avanti / indietro di un livello",
+  "sc.frontBack": "Porta le forme selezionate in primo piano / in secondo piano",
+  "editor.menuCopy": "Copia",
+  "editor.menuPaste": "Incolla",
+  "editor.menuToFront": "Porta in primo piano",
+  "editor.menuForward": "Porta avanti",
+  "editor.menuBackward": "Porta indietro",
+  "editor.menuToBack": "Porta in secondo piano",
 };
 
 export type Key = keyof typeof it;

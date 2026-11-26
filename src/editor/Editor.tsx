@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { t as tr } from "../i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
+  BringToFront,
+  SendToBack,
   Braces,
   Circle as CircleIcon,
   MessageSquare,
@@ -48,7 +50,7 @@ import {
 import type { Context as KonvaContext } from "konva/lib/Context";
 import type { Shape as KonvaShapeNode } from "konva/lib/Shape";
 import type { Box as TransformBox } from "konva/lib/shapes/Transformer";
-import { RibbonButton } from "../ui";
+import { Menu, RibbonButton } from "../ui";
 import {
   type Annotations,
   type BoxShape,
@@ -330,6 +332,8 @@ export function Editor({ name, onClose, notify }: Props) {
   const [view, setView] = useState({ w: 800, h: 600 });
   const [busy, setBusy] = useState(false);
   const [askClose, setAskClose] = useState(false);
+  /** Right-click menu of the selected shapes, at this window position. */
+  const [shapeMenu, setShapeMenu] = useState<{ x: number; y: number } | null>(null);
   /** Vertices of the polygon being drawn, the last pair following the mouse. */
   const [polyDraft, setPolyDraftState] = useState<number[] | null>(null);
   const polyRef = useRef<number[] | null>(null);
@@ -862,6 +866,12 @@ export function Editor({ name, onClose, notify }: Props) {
         if (e.evt.ctrlKey || e.evt.metaKey)
           setSelectedIds((ids) => (ids.includes(s.id) ? ids.filter((id) => id !== s.id) : [...ids, s.id]));
         else if (!isSelected(s.id)) setSelectedId(s.id);
+      },
+      onContextMenu: (e: KonvaEventObject<PointerEvent>) => {
+        e.evt.preventDefault();
+        e.cancelBubble = true;
+        if (!isSelected(s.id)) setSelectedId(s.id);
+        setShapeMenu({ x: e.evt.clientX, y: e.evt.clientY });
       },
       onDragStart: onDragStart(s),
       onDragEnd: onDragEnd(s),
@@ -1426,9 +1436,33 @@ export function Editor({ name, onClose, notify }: Props) {
     (e.repeat ? amend : commit)(next);
   };
 
+  /**
+   * Stacking order of the selected shapes, which is their order in the list (later ones are
+   * drawn on top): to the top or bottom, or one step past the next shape.
+   */
+  const reorder = (to: "front" | "back" | "forward" | "backward") => {
+    if (selectedIds.length === 0) return;
+    let next: Shape[];
+    if (to === "front") next = [...shapes.filter((s) => !isSelected(s.id)), ...shapes.filter((s) => isSelected(s.id))];
+    else if (to === "back") next = [...shapes.filter((s) => isSelected(s.id)), ...shapes.filter((s) => !isSelected(s.id))];
+    else {
+      // Each selected shape swaps with the unselected neighbour on that side; walking from that
+      // side keeps a block of selected shapes together.
+      next = [...shapes];
+      const up = to === "forward";
+      for (let k = 0; k < next.length; k++) {
+        const i = up ? next.length - 2 - k : k + 1;
+        const j = up ? i + 1 : i - 1;
+        if (i < 0 || i >= next.length || j < 0 || j >= next.length) continue;
+        if (isSelected(next[i].id) && !isSelected(next[j].id)) [next[i], next[j]] = [next[j], next[i]];
+      }
+    }
+    if (next.some((s, i) => s !== shapes[i])) commit(next);
+  };
+
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
-    if (textEdit || askClose || resizeOpen || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement)
+    if (textEdit || askClose || resizeOpen || shapeMenu || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement)
       return;
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
@@ -1438,6 +1472,10 @@ export function Editor({ name, onClose, notify }: Props) {
     else if (mod && key === "c") (selectedIds.length > 0 ? copyShapes : copyImage)();
     else if (mod && key === "v") paste();
     else if (!mod && !e.altKey && selectedIds.length > 0 && e.key.startsWith("Arrow")) nudge(e);
+    else if (mod && !e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      const up = e.key === "ArrowUp";
+      reorder(e.shiftKey ? (up ? "front" : "back") : up ? "forward" : "backward");
+    }
     else if (mod && key === "a") {
       setTool("select");
       setSelectedIds(shapes.map((s) => s.id));
@@ -1553,6 +1591,22 @@ export function Editor({ name, onClose, notify }: Props) {
           onClick={redo}
           disabled={history.index === history.stack.length - 1}
           title="Ctrl+Y"
+        />
+        <RibbonButton
+          icon={<BringToFront size={20} />}
+          tint="#3e63dd"
+          label={tr("editor.bringToFront")}
+          onClick={() => reorder("front")}
+          disabled={selectedIds.length === 0}
+          title="Ctrl+Shift+↑"
+        />
+        <RibbonButton
+          icon={<SendToBack size={20} />}
+          tint="#3e63dd"
+          label={tr("editor.sendToBack")}
+          onClick={() => reorder("back")}
+          disabled={selectedIds.length === 0}
+          title="Ctrl+Shift+↓"
         />
         <RibbonButton
           icon={<Trash2 size={20} />}
@@ -1742,6 +1796,22 @@ export function Editor({ name, onClose, notify }: Props) {
             if (s !== outScale) commitDoc({ scale: s === 1 ? undefined : s });
           }}
           onCancel={() => setResizeOpen(false)}
+        />
+      )}
+
+      {shapeMenu && (
+        <Menu
+          items={[
+            { label: tr("editor.menuCopy"), onSelect: copyShapes },
+            { label: tr("editor.menuPaste"), onSelect: paste },
+            { label: tr("editor.menuToFront"), onSelect: () => reorder("front") },
+            { label: tr("editor.menuForward"), onSelect: () => reorder("forward") },
+            { label: tr("editor.menuBackward"), onSelect: () => reorder("backward") },
+            { label: tr("editor.menuToBack"), onSelect: () => reorder("back") },
+            { label: tr("common.delete"), onSelect: removeSelected, danger: true },
+          ]}
+          onClose={() => setShapeMenu(null)}
+          style={{ position: "fixed", left: shapeMenu.x, top: shapeMenu.y }}
         />
       )}
 

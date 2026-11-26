@@ -63,6 +63,8 @@ function sections(hotkeys: Hotkeys | undefined): { title: string; hint?: string;
         [`${acc("Shift")} + ${t("key.Arrows")}`, t("sc.nudgeShapesFar")],
         [withMod("Control", "key.Click"), t("sc.multiSelectShapes")],
         [k("key.Delete"), t("sc.removeShape")],
+        [`${acc("Control")} + ↑ / ↓`, t("sc.forwardBackward")],
+        [`${acc("Control+Shift")} + ↑ / ↓`, t("sc.frontBack")],
         [acc("Escape"), t("sc.deselect")],
         [k("key.Enter"), t("sc.finishPolygon")],
         [withMod("Shift", "key.Drag"), t("sc.square")],
