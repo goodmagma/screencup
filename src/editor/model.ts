@@ -181,23 +181,72 @@ export function isMeaningful(s: Shape): boolean {
   return true;
 }
 
+/** Blur strength (Gaussian sigma, before `sizeScale`) for each of the SIZES buttons. */
+export const BLUR_SIGMAS = [2.5, 4, 7, 12];
+
+/** The SIZES button closest to a shape width, which was set as `SIZES[i] * scale`. */
+export const sizeLevel = (width: number, scale: number) =>
+  SIZES.reduce((best, s, i) => (Math.abs(s * scale - width) < Math.abs(SIZES[best] * scale - width) ? i : best), 0);
+
 /**
- * A copy of the image with coarse pixel blocks. Blur shapes show this copy clipped to their
- * box, so the exported PNG really contains destroyed pixels, not a reversible overlay.
+ * A smoothly blurred copy of the image, close to a Gaussian blur of `sigma` pixels. Blur shapes
+ * show this copy clipped to their box, so the exported PNG really contains destroyed pixels,
+ * not a reversible overlay.
+ *
+ * Done by hand rather than with the canvas `filter`, which some webviews lack: the image is
+ * scaled down, blurred with three box-blur passes, and scaled back up with smoothing.
  */
-export function pixelate(img: HTMLImageElement | HTMLCanvasElement): HTMLCanvasElement {
-  const block = Math.max(8, Math.round(Math.max(img.width, img.height) / 160));
+export function blurImage(img: HTMLImageElement | HTMLCanvasElement, sigma: number): HTMLCanvasElement {
+  const down = Math.max(1, Math.floor(sigma / 2.5));
   const small = document.createElement("canvas");
-  small.width = Math.max(1, Math.ceil(img.width / block));
-  small.height = Math.max(1, Math.ceil(img.height / block));
-  small.getContext("2d")!.drawImage(img, 0, 0, small.width, small.height);
+  small.width = Math.max(1, Math.ceil(img.width / down));
+  small.height = Math.max(1, Math.ceil(img.height / down));
+  const sctx = small.getContext("2d")!;
+  sctx.imageSmoothingQuality = "high";
+  sctx.drawImage(img, 0, 0, small.width, small.height);
+  const data = sctx.getImageData(0, 0, small.width, small.height);
+  for (const r of boxRadii(sigma / down)) {
+    boxBlur(data.data, small.width, small.height, r, true);
+    boxBlur(data.data, small.width, small.height, r, false);
+  }
+  sctx.putImageData(data, 0, 0);
   const out = document.createElement("canvas");
   out.width = img.width;
   out.height = img.height;
   const ctx = out.getContext("2d")!;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(small, 0, 0, small.width * block, small.height * block);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(small, 0, 0, small.width * down, small.height * down);
   return out;
+}
+
+/** Radii of three box blurs that together approximate a Gaussian of `sigma`. */
+function boxRadii(sigma: number): number[] {
+  const n = 3;
+  let wl = Math.floor(Math.sqrt((12 * sigma * sigma) / n + 1));
+  if (wl % 2 === 0) wl--;
+  const wu = wl + 2;
+  const m = Math.round((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4));
+  return Array.from({ length: n }, (_, i) => ((i < m ? wl : wu) - 1) / 2);
+}
+
+/** One box-blur pass of radius `r` over RGBA pixels, along rows or columns; edges clamp. */
+function boxBlur(px: Uint8ClampedArray, w: number, h: number, r: number, rows: boolean) {
+  if (r < 1) return;
+  const [lines, len, step, lineStep] = rows ? [h, w, 4, w * 4] : [w, h, w * 4, 4];
+  const line = new Float32Array(len * 4);
+  const k = 1 / (2 * r + 1);
+  for (let l = 0; l < lines; l++) {
+    const base = l * lineStep;
+    for (let i = 0; i < len; i++) for (let c = 0; c < 4; c++) line[i * 4 + c] = px[base + i * step + c];
+    for (let c = 0; c < 4; c++) {
+      let acc = 0;
+      for (let i = -r; i <= r; i++) acc += line[Math.min(len - 1, Math.max(0, i)) * 4 + c];
+      for (let i = 0; i < len; i++) {
+        px[base + i * step + c] = acc * k;
+        acc += line[Math.min(len - 1, i + r + 1) * 4 + c] - line[Math.max(0, i - r) * 4 + c];
+      }
+    }
+  }
 }
 
 /** Undo/redo over immutable document snapshots. */

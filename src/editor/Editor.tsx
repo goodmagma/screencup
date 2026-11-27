@@ -74,7 +74,9 @@ import {
   isCentred,
   isMeaningful,
   normalizeBox,
-  pixelate,
+  blurImage,
+  BLUR_SIGMAS,
+  sizeLevel,
   push,
   sizeScale,
   snapAngle,
@@ -449,9 +451,17 @@ export function Editor({ name, onClose, notify }: Props) {
     return canvas;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [img, picturesKey]);
-  const pixelated = useMemo(() => (backdrop ? pixelate(backdrop) : null), [backdrop]);
+  /** Blurred copies of the backdrop, made on first use, one per strength (the size buttons). */
+  const blurCache = useMemo(() => new Map<number, HTMLCanvasElement>(), [backdrop]);
   const scale = img ? sizeScale(img.width, img.height) : 1;
   const strokeWidth = SIZES[sizeIdx] * scale;
+  const blurred = (width: number) => {
+    if (!backdrop) return undefined;
+    const level = sizeLevel(width, scale);
+    let canvas = blurCache.get(level);
+    if (!canvas) blurCache.set(level, (canvas = blurImage(backdrop, BLUR_SIGMAS[level] * scale)));
+    return canvas;
+  };
   const zoom = !img
     ? 1
     : fit
@@ -1119,7 +1129,7 @@ export function Editor({ name, onClose, notify }: Props) {
             y={s.y}
             width={s.w}
             height={s.h}
-            fillPatternImage={pixelated as unknown as HTMLImageElement}
+            fillPatternImage={blurred(s.width) as unknown as HTMLImageElement}
             fillPatternOffsetX={s.x}
             fillPatternOffsetY={s.y}
             fillPatternRepeat="no-repeat"
